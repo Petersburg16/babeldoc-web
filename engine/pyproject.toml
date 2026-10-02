@@ -1,0 +1,11 @@
+[project]
+name = "babeldoc-web-engine"
+version = "0.1.0"
+description = "BabelDOC 运行时：锁定 babeldoc 版本，runner.py 以 JSON lines 向后端汇报进度"
+requires-python = "==3.12.*"
+dependencies = [
+    "babeldoc==0.6.4",
+]
+
+[tool.uv]
+package = false
