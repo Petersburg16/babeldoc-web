@@ -10,16 +10,26 @@
     "check": "svelte-check --tsconfig ./tsconfig.json"
   },
   "devDependencies": {
+    "@bentopdf/pymupdf-wasm": "0.11.16",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@tailwindcss/vite": "^4.3.3",
+    "@tesseract.js-data/chi_sim": "1.0.0",
+    "@tesseract.js-data/eng": "1.0.0",
     "@tsconfig/svelte": "^5.0.8",
     "svelte": "^5.57.1",
     "svelte-check": "^4.7.6",
     "tailwindcss": "^4.3.3",
+    "tesseract.js-core": "7.0.0",
     "typescript": "~5.9.3",
     "vite": "^8.3.2"
   },
   "dependencies": {
-    "@lucide/svelte": "^1.49.0"
+    "@cantoo/fontkit": "2.0.12",
+    "@cantoo/pdf-lib": "2.11.1",
+    "@lucide/svelte": "^1.49.0",
+    "@neslinesli93/qpdf-wasm": "0.3.0",
+    "fflate": "0.8.3",
+    "pdfjs-dist": "5.7.284",
+    "tesseract.js": "7.0.0"
   }
 }

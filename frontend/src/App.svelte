@@ -13,6 +13,7 @@
   import Home from './pages/Home.svelte';
   import Login from './pages/Login.svelte';
   import NotFound from './pages/NotFound.svelte';
+  import PdfRoute from './pages/PdfRoute.svelte';
   import Register from './pages/Register.svelte';
 
   const PUBLIC = new Set(['/login', '/register']);
@@ -49,6 +50,7 @@
     if (path === '/register') return Register;
     if (path === '/') return Home;
     if (path === '/account') return Account;
+    if (path === '/pdf' || path.startsWith('/pdf/')) return PdfRoute;
     if (path === '/admin' || path.startsWith('/admin/')) return Admin;
     return NotFound;
   });

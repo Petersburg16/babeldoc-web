@@ -60,6 +60,17 @@ warmup_assets() {
   runuser -u "$RUN_USER" -- touch "$marker"
 }
 
+sync_pdf_assets() {
+  local rel="$1"
+  [ -f "$rel/frontend/pdf-assets.lock.json" ] || return 0
+  log "同步 PDF 工具资源（只在版本变化时下载，中文字体优先复用 BabelDOC 的缓存）"
+  install -d -o "$RUN_USER" -g "$RUN_USER" -m 755 "$DATA/pdf-assets"
+  runuser -u "$RUN_USER" -- env HOME="$DATA" BDW_DATA_DIR="$DATA" "$rel/backend/.venv/bin/python" -m app.cli \
+    pdf-assets sync --lock "$rel/frontend/pdf-assets.lock.json" --dest "$DATA/pdf-assets" \
+    --seed "$DATA/.cache/babeldoc/fonts" --keep 2 \
+    || die "PDF 工具资源同步失败，未切换版本"
+}
+
 health() {
   for _ in $(seq 1 30); do
     curl -fsS -m 3 "http://127.0.0.1:$PORT/api/meta" >/dev/null 2>&1 && return 0
@@ -88,6 +99,7 @@ install_release() {
   [ -f "$rel/frontend/dist/index.html" ] || die "版本里缺少 frontend/dist，前端没有构建"
 
   warmup_assets "$rel"
+  (cd "$rel/backend" && sync_pdf_assets "$rel")
 
   local unit changed=""
   for unit in "$SVC.service" "$SVC-backup.service" "$SVC-backup.timer"; do

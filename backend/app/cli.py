@@ -13,7 +13,8 @@ from pathlib import Path
 
 from sqlalchemy import func, select
 
-from .config import load_config
+from . import pdf_asset_sync
+from .config import PROJECT_DIR, load_config
 from .db import init_db, make_engine, make_sessionmaker
 from .engine import build_spec, child_env, engine_command, spawn
 from .job_ops import default_model
@@ -159,6 +160,27 @@ def engine_check(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def pdf_assets_lock(args: argparse.Namespace) -> None:
+    frontend = PROJECT_DIR / "frontend"
+    lock = pdf_asset_sync.build_lock(
+        frontend / "pdf-assets.json",
+        frontend / "package-lock.json",
+        frontend / "node_modules",
+        frontend / "node_modules" / ".cache" / "pdf-assets",
+    )
+    out = frontend / "pdf-assets.lock.json"
+    out.write_bytes((json.dumps(lock, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+    for engine_id, e in lock["engines"].items():
+        print(f"  {engine_id:<14} {e['version']}  {len(e['files']):>4} 个文件  下载约 {e['transfer'] / 1e6:6.1f} MB")
+    print(f"已写入 {out.name}")
+
+
+def pdf_assets_sync(args: argparse.Namespace) -> None:
+    lock = Path(args.lock) if args.lock else PROJECT_DIR / "frontend" / "pdf-assets.lock.json"
+    dest = Path(args.dest) if args.dest else load_config().pdf_assets_dir
+    pdf_asset_sync.sync(lock, dest, seeds=[Path(s) for s in args.seed], registry=args.registry, keep=args.keep)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     sub = parser.add_subparsers(required=True)
@@ -184,6 +206,18 @@ def main() -> None:
     p.add_argument("--lang-in", default="en")
     p.add_argument("--lang-out", default="zh-CN")
     p.set_defaults(func=engine_check)
+
+    p = sub.add_parser("pdf-assets", help="PDF 工具运行时资源：lock 生成锁文件（开发机），sync 按锁文件下载")
+    psub = p.add_subparsers(required=True)
+    q = psub.add_parser("lock", help="按 frontend/pdf-assets.json 和 node_modules 生成 frontend/pdf-assets.lock.json")
+    q.set_defaults(func=pdf_assets_lock)
+    q = psub.add_parser("sync", help="按锁文件下载、校验并预压缩到 BDW_PDF_ASSETS_DIR（或 --dest）")
+    q.add_argument("--lock", help="锁文件路径，默认 frontend/pdf-assets.lock.json")
+    q.add_argument("--dest", help="目标目录，默认 BDW_PDF_ASSETS_DIR（数据目录下的 pdf-assets）")
+    q.add_argument("--seed", action="append", default=[], help="可复用的本地目录（同名同哈希直接硬链接），可多次指定")
+    q.add_argument("--registry", help="npm 源，默认 https://registry.npmjs.org/，也可用 BDW_NPM_REGISTRY")
+    q.add_argument("--keep", type=int, default=2, help="每个引擎保留最近几个版本，默认 2")
+    q.set_defaults(func=pdf_assets_sync)
 
     args = parser.parse_args()
     args.func(args)

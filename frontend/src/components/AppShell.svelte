@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { api } from '../lib/api';
-  import { ChevronDown, Languages, LogOut, Monitor, Moon, Shield, Sun, UserRound } from '../lib/icons';
+  import { ChevronDown, FileCog, Languages, LogOut, Monitor, Moon, Shield, Sun, UserRound } from '../lib/icons';
   import { jobs } from '../lib/jobs.svelte';
   import { router } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
@@ -40,6 +40,9 @@
       <nav class="flex items-center gap-1 text-[13.5px]">
         <a href="/" class="nav-link" class:active={router.path === '/'}>
           <Languages class="size-4" /><span class="hidden sm:inline">翻译</span>
+        </a>
+        <a href="/pdf" class="nav-link" class:active={router.path === '/pdf' || router.path.startsWith('/pdf/')}>
+          <FileCog class="size-4" /><span class="hidden sm:inline">PDF 处理</span>
         </a>
         {#if session.isAdmin}
           <a href="/admin" class="nav-link" class:active={router.path.startsWith('/admin')}>

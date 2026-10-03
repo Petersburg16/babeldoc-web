@@ -1,0 +1,220 @@
+{
+  "$comment": "PDF 工具运行时由本站分发的文件清单。改动后在 backend 目录运行 uv run python -m app.cli pdf-assets lock 重新生成 pdf-assets.lock.json。npm 来源取 package-lock.json 里锁定的版本；url 来源必须是固定版本的地址。lazy 表示由库按需自己去取、不预先下载。",
+  "engines": {
+    "render": {
+      "label": "PDF 渲染数据",
+      "lazy": true,
+      "files": [
+        {
+          "path": "cmaps/",
+          "npm": "pdfjs-dist",
+          "dir": "cmaps"
+        },
+        {
+          "path": "standard_fonts/",
+          "npm": "pdfjs-dist",
+          "dir": "standard_fonts",
+          "include": [
+            ".pfb",
+            ".ttf"
+          ]
+        },
+        {
+          "path": "wasm/",
+          "npm": "pdfjs-dist",
+          "dir": "wasm",
+          "include": [
+            "openjpeg.wasm",
+            "openjpeg_nowasm_fallback.js",
+            "jbig2.wasm",
+            "jbig2_nowasm_fallback.js",
+            "qcms_bg.wasm"
+          ]
+        },
+        {
+          "path": "iccs/CGATS001Compat-v2-micro.icc",
+          "npm": "pdfjs-dist",
+          "file": "iccs/CGATS001Compat-v2-micro.icc"
+        }
+      ]
+    },
+    "qpdf": {
+      "label": "qpdf 页面与加密引擎",
+      "files": [
+        {
+          "path": "qpdf.wasm",
+          "npm": "@neslinesli93/qpdf-wasm",
+          "file": "dist/qpdf.wasm"
+        }
+      ]
+    },
+    "ocr": {
+      "label": "OCR 识别引擎与中英文语言包",
+      "files": [
+        {
+          "path": "worker.min.js",
+          "npm": "tesseract.js",
+          "file": "dist/worker.min.js"
+        },
+        {
+          "path": "core/tesseract-core-relaxedsimd-lstm.wasm.js",
+          "npm": "tesseract.js-core",
+          "file": "tesseract-core-relaxedsimd-lstm.wasm.js",
+          "lazy": true
+        },
+        {
+          "path": "core/tesseract-core-simd-lstm.wasm.js",
+          "npm": "tesseract.js-core",
+          "file": "tesseract-core-simd-lstm.wasm.js",
+          "lazy": true
+        },
+        {
+          "path": "core/tesseract-core-lstm.wasm.js",
+          "npm": "tesseract.js-core",
+          "file": "tesseract-core-lstm.wasm.js",
+          "lazy": true
+        },
+        {
+          "path": "lang/eng.traineddata.gz",
+          "npm": "@tesseract.js-data/eng",
+          "file": "4.0.0_best_int/eng.traineddata.gz"
+        },
+        {
+          "path": "lang/chi_sim.traineddata.gz",
+          "npm": "@tesseract.js-data/chi_sim",
+          "file": "4.0.0_best_int/chi_sim.traineddata.gz"
+        }
+      ]
+    },
+    "pymupdf": {
+      "label": "PyMuPDF 引擎",
+      "files": [
+        {
+          "path": "pyodide.js",
+          "npm": "@bentopdf/pymupdf-wasm",
+          "file": "assets/pyodide.js"
+        },
+        {
+          "path": "pyodide.asm.js",
+          "npm": "@bentopdf/pymupdf-wasm",
+          "file": "assets/pyodide.asm.js"
+        },
+        {
+          "path": "pyodide.asm.wasm",
+          "npm": "@bentopdf/pymupdf-wasm",
+          "file": "assets/pyodide.asm.wasm"
+        },
+        {
+          "path": "python_stdlib.zip",
+          "npm": "@bentopdf/pymupdf-wasm",
+          "file": "assets/python_stdlib.zip"
+        },
+        {
+          "path": "pyodide-lock.json",
+          "npm": "@bentopdf/pymupdf-wasm",
+          "file": "assets/pyodide-lock.json"
+        },
+        {
+          "path": "pymupdf-1.26.3-cp313-none-pyodide_2025_0_wasm32.whl",
+          "npm": "@bentopdf/pymupdf-wasm",
+          "file": "assets/pymupdf-1.26.3-cp313-none-pyodide_2025_0_wasm32.whl"
+        }
+      ]
+    },
+    "pdf2docx": {
+      "label": "Word 转换组件",
+      "files": [
+        {
+          "path": "numpy-2.2.5-cp313-cp313-pyodide_2025_0_wasm32.whl",
+          "npm": "@bentopdf/pymupdf-wasm",
+          "file": "assets/numpy-2.2.5-cp313-cp313-pyodide_2025_0_wasm32.whl"
+        },
+        {
+          "path": "opencv_python-4.11.0.86-cp313-cp313-pyodide_2025_0_wasm32.whl",
+          "npm": "@bentopdf/pymupdf-wasm",
+          "file": "assets/opencv_python-4.11.0.86-cp313-cp313-pyodide_2025_0_wasm32.whl"
+        },
+        {
+          "path": "lxml-5.4.0-cp313-cp313-pyodide_2025_0_wasm32.whl",
+          "npm": "@bentopdf/pymupdf-wasm",
+          "file": "assets/lxml-5.4.0-cp313-cp313-pyodide_2025_0_wasm32.whl"
+        },
+        {
+          "path": "typing_extensions-4.12.2-py3-none-any.whl",
+          "npm": "@bentopdf/pymupdf-wasm",
+          "file": "assets/typing_extensions-4.12.2-py3-none-any.whl"
+        },
+        {
+          "path": "python_docx-1.2.0-py3-none-any.whl",
+          "npm": "@bentopdf/pymupdf-wasm",
+          "file": "assets/python_docx-1.2.0-py3-none-any.whl"
+        },
+        {
+          "path": "fonttools-4.56.0-py3-none-any.whl",
+          "npm": "@bentopdf/pymupdf-wasm",
+          "file": "assets/fonttools-4.56.0-py3-none-any.whl"
+        },
+        {
+          "path": "pdf2docx-0.5.8-py3-none-any.whl",
+          "npm": "@bentopdf/pymupdf-wasm",
+          "file": "assets/pdf2docx-0.5.8-py3-none-any.whl"
+        }
+      ]
+    },
+    "font-sans": {
+      "label": "思源黑体",
+      "files": [
+        {
+          "path": "SourceHanSansCN-Regular.ttf",
+          "url": "https://raw.githubusercontent.com/funstory-ai/BabelDOC-Assets/1eeeec2a63b05fe6fe7a1f45f0955a8fa98793c4/fonts/SourceHanSansCN-Regular.ttf"
+        }
+      ]
+    },
+    "font-sans-bold": {
+      "label": "思源黑体粗体",
+      "files": [
+        {
+          "path": "SourceHanSansCN-Bold.ttf",
+          "url": "https://raw.githubusercontent.com/funstory-ai/BabelDOC-Assets/1eeeec2a63b05fe6fe7a1f45f0955a8fa98793c4/fonts/SourceHanSansCN-Bold.ttf"
+        }
+      ]
+    },
+    "font-serif": {
+      "label": "思源宋体",
+      "files": [
+        {
+          "path": "SourceHanSerifCN-Regular.ttf",
+          "url": "https://raw.githubusercontent.com/funstory-ai/BabelDOC-Assets/1eeeec2a63b05fe6fe7a1f45f0955a8fa98793c4/fonts/SourceHanSerifCN-Regular.ttf"
+        }
+      ]
+    },
+    "font-serif-bold": {
+      "label": "思源宋体粗体",
+      "files": [
+        {
+          "path": "SourceHanSerifCN-Bold.ttf",
+          "url": "https://raw.githubusercontent.com/funstory-ai/BabelDOC-Assets/1eeeec2a63b05fe6fe7a1f45f0955a8fa98793c4/fonts/SourceHanSerifCN-Bold.ttf"
+        }
+      ]
+    },
+    "font-kai": {
+      "label": "霞鹜文楷",
+      "files": [
+        {
+          "path": "LXGWWenKaiGB-Regular.1.520.ttf",
+          "url": "https://raw.githubusercontent.com/funstory-ai/BabelDOC-Assets/1eeeec2a63b05fe6fe7a1f45f0955a8fa98793c4/fonts/LXGWWenKaiGB-Regular.1.520.ttf"
+        }
+      ]
+    },
+    "font-fang": {
+      "label": "朱雀仿宋",
+      "files": [
+        {
+          "path": "ZhuqueFangsong-Regular.ttf",
+          "url": "https://github.com/TrionesType/zhuque/releases/download/v0.212/ZhuqueFangsong-v0.212.zip",
+          "member": "ZhuqueFangsong-Regular.ttf"
+        }
+      ]
+    }
+  }
+}

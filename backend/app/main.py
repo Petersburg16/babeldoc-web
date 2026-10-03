@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -12,7 +13,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from . import __version__
+from . import __version__, pdf_assets
 from .config import Config, load_config
 from .db import init_db, make_engine, make_sessionmaker
 from .deps import AppContext
@@ -26,7 +27,16 @@ SECURITY_HEADERS = [
     (b"x-content-type-options", b"nosniff"),
     (b"referrer-policy", b"same-origin"),
     (b"x-frame-options", b"SAMEORIGIN"),
+    (b"cross-origin-resource-policy", b"same-origin"),
 ]
+# 跨源隔离：PDF 工具里的 LibreOffice WASM 需要 SharedArrayBuffer。全站只用同源资源，所以页面和脚本都加；
+# 单页应用切换页面不会重新加载文档，只给 /pdf 加是不够的。译文文件可能在新标签页里直接预览，
+# 浏览器自带的 PDF 阅读器在跨源隔离下的表现没把握，下载本来也用不到，所以任务文件不加
+ISOLATION_HEADERS = [
+    (b"cross-origin-opener-policy", b"same-origin"),
+    (b"cross-origin-embedder-policy", b"require-corp"),
+]
+JOB_FILE = re.compile(r"^/api/jobs/[^/]+/files/")
 CACHE_IMMUTABLE = b"public, max-age=31536000, immutable"
 CACHE_REVALIDATE = b"no-cache"
 
@@ -49,7 +59,8 @@ class GuardMiddleware:
         async def send_with_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
                 existing = {name.lower() for name, _ in message.get("headers", [])}
-                extra = [h for h in SECURITY_HEADERS if h[0] not in existing]
+                wanted = SECURITY_HEADERS if JOB_FILE.match(scope["path"]) else SECURITY_HEADERS + ISOLATION_HEADERS
+                extra = [h for h in wanted if h[0] not in existing]
                 if b"cache-control" not in existing:
                     # 构建产物文件名带内容哈希，可以长期缓存；其余（index.html、接口、下载）每次回源校验，
                     # 否则浏览器按 Last-Modified 启发式缓存旧的 index.html，发版后几个小时还在用旧前端
@@ -109,6 +120,8 @@ def create_app(config: Config | None = None) -> FastAPI:
     @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)
     def api_not_found(path: str) -> None:
         raise HTTPException(404, "接口不存在")
+
+    pdf_assets.mount(app, config.pdf_assets_dir)
 
     if (config.frontend_dir / "index.html").is_file():
         app.frontend("/", directory=config.frontend_dir, fallback="index.html", check_dir=False)

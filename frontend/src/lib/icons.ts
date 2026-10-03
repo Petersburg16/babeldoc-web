@@ -14,6 +14,7 @@ export { default as Cpu } from '@lucide/svelte/icons/cpu';
 export { default as Download } from '@lucide/svelte/icons/download';
 export { default as ExternalLink } from '@lucide/svelte/icons/external-link';
 export { default as Eye } from '@lucide/svelte/icons/eye';
+export { default as FileCog } from '@lucide/svelte/icons/file-cog';
 export { default as FileText } from '@lucide/svelte/icons/file-text';
 export { default as FileUp } from '@lucide/svelte/icons/file-up';
 export { default as Gauge } from '@lucide/svelte/icons/gauge';

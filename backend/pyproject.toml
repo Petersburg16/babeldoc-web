@@ -13,6 +13,7 @@ dependencies = [
     "pypdf>=5",
     "httpx[socks]>=0.28",
     "psutil>=6",
+    "brotli>=1.1",
 ]
 
 [dependency-groups]
