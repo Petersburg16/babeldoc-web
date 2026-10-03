@@ -150,6 +150,11 @@ def create_jobs(
     profile = db.get(ModelProfile, opts.model_id) if opts.model_id else default_model(db)
     if profile is None or not profile.enabled:
         raise HTTPException(400, "所选模型不可用" if opts.model_id else "管理员还没有配置可用的翻译模型")
+    term_profile = None
+    if opts.term_model_id and opts.auto_extract_glossary and opts.term_model_id != profile.id:
+        term_profile = db.get(ModelProfile, opts.term_model_id)
+        if term_profile is None or not term_profile.enabled:
+            raise HTTPException(400, "所选术语提取模型不可用")
 
     pages = normalize_pages(opts.pages)
     if pages:
@@ -188,7 +193,9 @@ def create_jobs(
 
         check_capacity(db, user, sum(s[4] for s in staged), len(staged))
         now = utcnow()
-        stored_options = opts.model_dump(exclude={"model_id", "pages", "lang_in", "lang_out"})
+        stored_options = opts.model_dump(exclude={"model_id", "term_model_id", "pages", "lang_in", "lang_out"})
+        if term_profile is not None:
+            stored_options.update(term_model_id=term_profile.id, term_model_name=term_profile.name)
         jobs = []
         for index, (job_id, name, size, page_count, billed) in enumerate(staged):
             job = Job(

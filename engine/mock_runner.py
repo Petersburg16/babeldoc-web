@@ -77,6 +77,9 @@ def main() -> int:
         "term_tokens": {"total_tokens": 0},
         "calls": {"total": 40, "cached": 0, "api_ok": 40, "api_errors": 0},
     }
+    model = spec.get("model") or {}
+    # 只回显布尔值：测试据此核对后端有没有把术语模型配置和密钥传到子进程
+    stats["term"] = {"spec": bool(model.get("term")), "key": bool(os.environ.get("BDW_TERM_API_KEY"))}
     emit("finished", files=files, stats=stats, warning=mock.get("warning"))
     return 0
 

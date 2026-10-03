@@ -30,6 +30,7 @@
       lang_in: session.meta?.default_lang_in ?? 'en',
       lang_out: session.meta?.default_lang_out ?? 'zh-CN',
       model_id: null,
+      term_model_id: null,
       pages: null,
       output: 'both',
       dual_mode: 'side_by_side',
@@ -100,6 +101,9 @@
       models = await api.models();
       if (!models.some((m) => m.id === options.model_id)) {
         options.model_id = (models.find((m) => m.is_default) ?? models[0])?.id ?? null;
+      }
+      if (options.term_model_id !== null && !models.some((m) => m.id === options.term_model_id)) {
+        options.term_model_id = null;
       }
     } catch (e) {
       toast.error(e);
@@ -193,6 +197,7 @@
         maxFiles={session.meta?.max_files ?? 10}
         maxMb={session.meta?.max_upload_mb ?? 50}
         maxPages={session.meta?.max_pages_per_job ?? 300}
+        retentionDays={session.meta?.file_retention_days ?? 0}
         disabled={uploading}
       />
     </div>
@@ -277,6 +282,14 @@
             <Switch bind:checked={options.auto_enable_ocr_workaround} label="扫描件自动兼容" description="检测到扫描件（带 OCR 文字层）时自动处理" />
             <Switch bind:checked={options.dual_translate_first} label="双语中译文页在前" disabled={options.output === 'mono'} />
             <Switch bind:checked={options.only_include_translated_page} label="只输出所选页" description="配合页码范围使用" disabled={!options.pages} />
+          </div>
+          <div>
+            <label class="label" for="term-model">术语提取模型</label>
+            <select id="term-model" class="field" bind:value={options.term_model_id} disabled={!options.auto_extract_glossary}>
+              <option value={null}>与翻译模型相同</option>
+              {#each models as model (model.id)}<option value={model.id}>{model.name}</option>{/each}
+            </select>
+            <p class="hint">{options.auto_extract_glossary ? '开工前用它统一专业术语，可以和翻译模型不同' : '开启“自动提取术语”后可选'}</p>
           </div>
           <div>
             <label class="label" for="font">译文字体</label>

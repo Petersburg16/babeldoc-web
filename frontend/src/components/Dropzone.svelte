@@ -8,10 +8,11 @@
     maxFiles: number;
     maxMb: number;
     maxPages: number;
+    retentionDays?: number;
     disabled?: boolean;
   }
 
-  let { files = $bindable(), maxFiles, maxMb, maxPages, disabled = false }: Props = $props();
+  let { files = $bindable(), maxFiles, maxMb, maxPages, retentionDays = 0, disabled = false }: Props = $props();
   let dragging = $state(false);
   let input = $state<HTMLInputElement>();
   let depth = 0;
@@ -70,6 +71,9 @@
   <p class="mt-1.5 text-[12.5px] text-muted">
     单个文件不超过 {maxMb} MB · 一次最多 {maxFiles} 个 · 每个任务不超过 {maxPages} 页
   </p>
+  {#if retentionDays}
+    <p class="mt-1 text-[12.5px] text-muted">原文与译文保留 {retentionDays} 天，到期自动删除，请及时下载</p>
+  {/if}
   <input
     bind:this={input}
     type="file"

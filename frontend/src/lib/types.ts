@@ -19,6 +19,7 @@ export interface Meta {
   max_upload_mb: number;
   max_pages_per_job: number;
   max_files: number;
+  file_retention_days: number;
   engine: string;
   version: string;
 }
@@ -46,6 +47,7 @@ export interface JobOptions {
   lang_in: string;
   lang_out: string;
   model_id: number | null;
+  term_model_id: number | null;
   pages: string | null;
   output: 'both' | 'dual' | 'mono';
   dual_mode: 'side_by_side' | 'alternating';
@@ -72,7 +74,7 @@ export interface Job {
   lang_in: string;
   lang_out: string;
   model_name: string;
-  options: Partial<JobOptions>;
+  options: Partial<JobOptions> & { term_model_name?: string };
   progress: number;
   stage: string;
   error: string | null;

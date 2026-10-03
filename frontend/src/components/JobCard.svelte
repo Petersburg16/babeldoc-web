@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api, fileUrl } from '../lib/api';
   import { confirm } from '../lib/confirm.svelte';
-  import { compact, duration, elapsedSince, relativeTime, stageLabel } from '../lib/format';
+  import { compact, duration, elapsedSince, expiryLabel, relativeTime, stageLabel } from '../lib/format';
   import {
     Ban,
     BookOpenText,
@@ -30,6 +30,14 @@
   const eta = $derived.by(() => {
     if (job.status !== 'running' || !elapsed || live.progress < 8 || live.progress >= 99) return null;
     return (elapsed * (100 - live.progress)) / live.progress;
+  });
+  const DAY = 86_400_000;
+  // 与后台清理一致：已结束的任务从结束时刻起算，清理每 30 分钟跑一次，过期未删的显示“即将删除”
+  const expiresIn = $derived.by(() => {
+    const days = session.meta?.file_retention_days;
+    if (!days || job.files_purged || !job.finished_at) return null;
+    if (!['succeeded', 'failed', 'canceled'].includes(job.status)) return null;
+    return new Date(job.finished_at).getTime() + days * DAY - now;
   });
   const tones = {
     queued: 'bg-surface-2 text-ink-2',
@@ -111,6 +119,10 @@
           <span aria-hidden="true">·</span>
           <span>{job.model_name}</span>
         {/if}
+        {#if job.options?.term_model_name}
+          <span aria-hidden="true">·</span>
+          <span>术语 {job.options.term_model_name}</span>
+        {/if}
         <span aria-hidden="true">·</span>
         <time datetime={job.created_at} title={new Date(job.created_at).toLocaleString('zh-CN')}>{relativeTime(job.created_at)}</time>
       </p>
@@ -158,6 +170,9 @@
           {#if job.stats?.seconds}<span>用时 {duration(job.stats.seconds)}</span>{/if}
           {#if job.tokens}<span>{compact(job.tokens)} tokens</span>{/if}
           {#if job.files_purged}<span>文件已超过保留期被清理</span>{/if}
+          {#if expiresIn !== null}
+            <span class={expiresIn < 3 * DAY ? 'font-medium text-warn-ink' : ''} title="原文与译文到期后自动删除，请及时下载">{expiryLabel(expiresIn)}</span>
+          {/if}
         </p>
         {#if job.warning}
           <p class="mt-2 flex items-start gap-1.5 rounded-lg bg-warn-soft px-2.5 py-1.5 text-[12.5px] text-warn-ink">
@@ -165,6 +180,9 @@
             {job.warning}
           </p>
         {/if}
+      {/if}
+      {#if (job.status === 'failed' || job.status === 'canceled') && expiresIn !== null}
+        <p class="mt-2 text-[12.5px] {expiresIn < 3 * DAY ? 'text-warn-ink' : 'text-muted'}">原文 {expiryLabel(expiresIn)}，删除前可以重试</p>
       {/if}
 
       <div class="mt-3.5 flex flex-wrap items-center justify-end gap-2">

@@ -15,6 +15,7 @@ def test_meta_reports_setup_and_languages(client):
     meta = client.get("/api/meta").json()
     assert meta["needs_setup"] is True
     assert meta["engine"] == "mock"
+    assert meta["file_retention_days"] == 30
     assert {"en", "zh-CN"} <= {lang["code"] for lang in meta["languages"]}
 
 
@@ -99,6 +100,35 @@ def test_failure_then_retry(app, admin_client):
     assert retried.status_code == 200
     again = wait_status(admin_client, job_id, {"failed", "succeeded"})
     assert again["attempts"] == 2
+
+
+def test_term_model_selection(app, admin_client):
+    main = admin_client.get("/api/admin/models").json()[0]
+    term_model = {
+        "name": "术语模型",
+        "base_url": "https://other.invalid/v1",
+        "api_key": "sk-term-0987654321",
+        "model": "t",
+    }
+    term = admin_client.post("/api/admin/models", json=term_model).json()
+    assert upload(admin_client, term_model_id=9999).status_code == 400
+
+    same = upload(admin_client, "same.pdf", term_model_id=main["id"]).json()[0]
+    off = upload(admin_client, "off.pdf", term_model_id=term["id"], auto_extract_glossary=False).json()[0]
+    chosen = upload(admin_client, "chosen.pdf", term_model_id=term["id"]).json()[0]
+    assert "term_model_id" not in same["options"]
+    assert "term_model_id" not in off["options"]
+    assert chosen["options"]["term_model_name"] == "术语模型"
+
+    for job in (same, off, chosen):
+        assert wait_status(admin_client, job["id"], {"succeeded", "failed"})["status"] == "succeeded"
+    with app.state.ctx.Session() as db:
+        echoed = {j["id"]: db.get(Job, j["id"]).result["stats"]["term"] for j in (same, off, chosen)}
+    assert echoed[chosen["id"]] == {"spec": True, "key": True}
+    assert echoed[same["id"]] == echoed[off["id"]] == {"spec": False, "key": False}
+
+    admin_client.patch(f"/api/admin/models/{term['id']}", json={"enabled": False})
+    assert upload(admin_client, term_model_id=term["id"]).status_code == 400
 
 
 def test_cancel_running_job(tmp_path, monkeypatch):

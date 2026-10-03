@@ -79,6 +79,7 @@ class JobOptions(BaseModel):
     lang_in: str = "en"
     lang_out: str = "zh-CN"
     model_id: int | None = None
+    term_model_id: int | None = None
     pages: str | None = Field(default=None, max_length=128)
     output: Literal["both", "dual", "mono"] = "both"
     dual_mode: Literal["side_by_side", "alternating"] = "side_by_side"
@@ -360,5 +361,6 @@ class MetaOut(BaseModel):
     max_upload_mb: int
     max_pages_per_job: int
     max_files: int
+    file_retention_days: int
     engine: str
     version: str

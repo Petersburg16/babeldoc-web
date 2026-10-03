@@ -2,7 +2,8 @@
 
 协议 v1
   argv[1]  任务描述 JSON（见 backend/app/engine.py 的 build_spec），不含密钥
-  env      BDW_API_KEY / BDW_TERM_API_KEY 传模型密钥
+           model.term 可选：术语提取单独用的模型配置（字段同 model），没有时用 model.term_model 或翻译模型
+  env      BDW_API_KEY / BDW_TERM_API_KEY 传模型密钥；model.term 只用 BDW_TERM_API_KEY，绝不回退到主密钥
   输出     每行一个 JSON 事件，写到启动时复制出来的原 stdout；
            babeldoc 及其 fork 出的子进程的一切输出都被重定向到 stderr（后端落盘为 engine.log）
 
@@ -216,16 +217,29 @@ async def run(spec: dict) -> None:
     high_level.init()
     cls = make_translator_class()
     translator = build_translator(cls, spec, model, api_key)
+    auto_extract = bool(opts.get("auto_extract_glossary", True)) and not skip_translation
     term_translator = translator
-    if model.get("term_model"):
+    if auto_extract and model.get("term"):
+        # 另一个接口的配置：主密钥可能发给别人的服务器，只认它自己的密钥
+        term_key = os.environ.get("BDW_TERM_API_KEY", "")
+        if not term_key:
+            raise EngineError("preflight", "术语提取模型未配置 API Key")
+        term_translator = build_translator(cls, spec, model["term"], term_key)
+    elif model.get("term_model"):
         term_translator = build_translator(
             cls, spec, {**model, "model": model["term_model"]}, os.environ.get("BDW_TERM_API_KEY") or api_key
         )
+    separate_term = term_translator is not translator
 
     preflight_seconds = None
     if not skip_translation and spec.get("preflight", True):
         emit("progress", overall=0, stage="Check model API", current=0, total=1, part=1, parts=1)
         preflight_seconds = preflight(translator)
+        if separate_term and auto_extract:
+            try:
+                preflight(term_translator)
+            except EngineError as e:
+                raise EngineError(e.kind, f"术语提取模型：{e.message}") from e
 
     set_translate_rate_limiter(max(1, int(model.get("qps") or 4)))
     doc_layout_model = DocLayoutModel.load_onnx()
@@ -271,7 +285,7 @@ async def run(spec: dict) -> None:
         auto_enable_ocr_workaround=bool(opts.get("auto_enable_ocr_workaround", True)),
         custom_system_prompt=opts.get("custom_system_prompt") or None,
         glossaries=load_glossaries(opts.get("glossary_files") or [], spec["lang_out"]),
-        auto_extract_glossary=bool(opts.get("auto_extract_glossary", True)) and not skip_translation,
+        auto_extract_glossary=auto_extract,
         save_auto_extracted_glossary=True,
         primary_font_family=opts.get("primary_font_family") or None,
         only_include_translated_page=bool(opts.get("only_include_translated_page")),
@@ -318,7 +332,7 @@ async def run(spec: dict) -> None:
     }
     term_usage = dict(getattr(config, "term_extraction_token_usage", {}) or {})
     total_tokens = translator.token_count.value
-    if term_translator is not translator:
+    if separate_term:
         total_tokens += term_translator.token_count.value
     stats = {
         "total_tokens": total_tokens,
@@ -340,16 +354,21 @@ async def run(spec: dict) -> None:
             "api_errors": translator.api_errors,
         },
     }
+    if separate_term:
+        stats["term_calls"] = {"api_ok": term_translator.api_ok, "api_errors": term_translator.api_errors}
 
-    warning = None
     if translator.api_errors and not translator.api_ok and not skip_translation:
         raise EngineError(
             "translate",
             f"所有 {translator.api_errors} 次翻译请求都失败了，译文无效。最后一次错误：{translator.last_error}",
         )
+    warnings = []
     if translator.api_errors:
-        warning = f"{translator.api_errors} 次翻译请求失败，部分段落可能保留了原文"
-    emit("finished", files=files, stats=stats, warning=warning)
+        warnings.append(f"{translator.api_errors} 次翻译请求失败，部分段落可能保留了原文")
+    if separate_term and term_translator.api_errors:
+        # 术语只影响一致性，不让任务失败
+        warnings.append(f"术语提取有 {term_translator.api_errors} 次请求失败，术语表可能不完整")
+    emit("finished", files=files, stats=stats, warning="；".join(warnings) or None)
 
 
 def main() -> int:

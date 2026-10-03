@@ -27,12 +27,26 @@ AUTO_SPLIT_THRESHOLD = 80
 AUTO_SPLIT_PAGES = 50
 
 
+def model_spec(profile: ModelProfile) -> dict[str, Any]:
+    return {
+        "base_url": profile.base_url,
+        "model": profile.model,
+        "qps": profile.qps,
+        "pool_max_workers": profile.pool_max_workers,
+        "send_temperature": profile.send_temperature,
+        "json_mode": profile.json_mode,
+        "thinking": profile.thinking,
+        "reasoning": profile.reasoning,
+    }
+
+
 def build_spec(
     *,
     job: Job,
     profile: ModelProfile,
     job_dir: Path,
     watermark_mode: str,
+    term_profile: ModelProfile | None = None,
     skip_translation: bool = False,
     mock: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -65,19 +79,11 @@ def build_spec(
         "lang_in": job.lang_in,
         "lang_out": job.lang_out,
         "skip_translation": skip_translation,
-        "model": {
-            "base_url": profile.base_url,
-            "model": profile.model,
-            "term_model": profile.term_model,
-            "qps": profile.qps,
-            "pool_max_workers": profile.pool_max_workers,
-            "send_temperature": profile.send_temperature,
-            "json_mode": profile.json_mode,
-            "thinking": profile.thinking,
-            "reasoning": profile.reasoning,
-        },
+        "model": {**model_spec(profile), "term_model": profile.term_model},
         "options": options,
     }
+    if term_profile is not None:
+        spec["model"]["term"] = model_spec(term_profile)
     if mock is not None:
         spec["mock"] = mock
     return spec
@@ -89,12 +95,14 @@ def engine_command(config: Config) -> list[str]:
     return [str(config.engine_python), str(config.engine_dir / "runner.py")]
 
 
-def child_env(api_key: str = "") -> dict[str, str]:
+def child_env(api_key: str = "", term_api_key: str = "") -> dict[str, str]:
     env = {k: v for k, v in os.environ.items() if not k.startswith("BDW_")}
     env["PYTHONUNBUFFERED"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     if api_key:
         env["BDW_API_KEY"] = api_key
+    if term_api_key:
+        env["BDW_TERM_API_KEY"] = term_api_key
     return env
 
 

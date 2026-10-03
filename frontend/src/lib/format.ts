@@ -72,6 +72,13 @@ export function duration(seconds: number | null | undefined) {
   return `${Math.floor(m / 60)} 小时 ${m % 60} 分`;
 }
 
+export function expiryLabel(ms: number) {
+  if (ms <= 0) return '即将自动删除';
+  const hours = ms / 3_600_000;
+  if (hours < 24) return `${Math.ceil(hours)} 小时后自动删除`;
+  return `${Math.ceil(hours / 24)} 天后自动删除`;
+}
+
 export function elapsedSince(iso: string | null | undefined, now: number) {
   if (!iso) return null;
   return (now - new Date(iso).getTime()) / 1000;

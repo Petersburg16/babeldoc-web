@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import delete, select, update
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 from .config import Config
 from .db import utcnow
@@ -209,14 +209,17 @@ class JobManager:
             if not (directory / "input.pdf").is_file():
                 return Outcome("failed", error="原文件已被清理，无法重新翻译", kind="input")
             settings = load_settings(db)
+            term_profile, term_note = self.resolve_term_profile(db, job, profile)
             spec = build_spec(
                 job=job,
                 profile=profile,
                 job_dir=directory,
                 watermark_mode=settings.watermark_mode,
+                term_profile=term_profile,
                 mock=self._mock_spec(job) if self.config.engine == "mock" else None,
             )
             api_key = self.secrets.decrypt(profile.api_key_enc)
+            term_key = self.secrets.decrypt(term_profile.api_key_enc) if term_profile else ""
 
         shutil.rmtree(directory / "out", ignore_errors=True)
         shutil.rmtree(directory / "work", ignore_errors=True)
@@ -227,8 +230,11 @@ class JobManager:
         log_path = directory / "engine.log"
         with log_path.open("ab") as fh:
             fh.write(f"\n===== attempt at {utcnow().isoformat()} =====\n".encode())
+            if term_note:
+                fh.write(f"{term_note}\n".encode())
 
-        rj.process = await asyncio.to_thread(spawn, self.config, spec_path, log_path, child_env(api_key))
+        env = child_env(api_key, term_key)
+        rj.process = await asyncio.to_thread(spawn, self.config, spec_path, log_path, env)
         if rj.cancel_requested or rj.interrupted:
             rj.process.kill()
 
@@ -271,6 +277,20 @@ class JobManager:
         stats = event.get("stats") or {}
         tokens = int(stats.get("total_tokens") or (stats.get("tokens") or {}).get("total") or 0)
         return Outcome("succeeded", files=files, stats=stats, warning=event.get("warning"), tokens=tokens)
+
+    def resolve_term_profile(
+        self, db: Session, job: Job, profile: ModelProfile
+    ) -> tuple[ModelProfile | None, str | None]:
+        """任务单独选的术语提取模型；重试时主模型可能已换成同一个，被删或停用就退回翻译模型。"""
+        opts = job.options or {}
+        term_id = opts.get("term_model_id")
+        if not term_id or term_id == profile.id or not opts.get("auto_extract_glossary", True):
+            return None, None
+        term = db.get(ModelProfile, term_id)
+        if term is None or not term.enabled:
+            name = opts.get("term_model_name") or term_id
+            return None, f"术语提取模型「{name}」已被删除或停用，改用翻译模型提取术语"
+        return term, None
 
     def _mock_spec(self, job: Job) -> dict[str, Any]:
         name = job.filename.lower()

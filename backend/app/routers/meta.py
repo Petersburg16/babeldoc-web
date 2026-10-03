@@ -30,6 +30,7 @@ def meta(db: DbDep, ctx: CtxDep) -> MetaOut:
         max_upload_mb=settings.max_upload_mb,
         max_pages_per_job=settings.max_pages_per_job,
         max_files=MAX_FILES_PER_UPLOAD,
+        file_retention_days=settings.file_retention_days,
         engine=ctx.config.engine,
         version=__version__,
     )
