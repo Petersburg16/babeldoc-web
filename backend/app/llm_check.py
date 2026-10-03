@@ -36,8 +36,6 @@ def check_chat(
     api_key: str,
     model: str,
     send_temperature: bool,
-    thinking: str | None,
-    reasoning: str | None,
 ) -> ModelTestOut:
     if not api_key:
         return ModelTestOut(ok=False, error="还没有填写 API Key")
@@ -50,10 +48,6 @@ def check_chat(
     }
     if send_temperature:
         payload["temperature"] = 0
-    if thinking:
-        payload["thinking"] = {"type": thinking}
-    if reasoning:
-        payload["reasoning"] = {"effort": reasoning}
     started = time.monotonic()
     try:
         resp = httpx.post(

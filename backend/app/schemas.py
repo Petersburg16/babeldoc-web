@@ -193,8 +193,6 @@ class ModelAdminOut(BaseModel):
     pool_max_workers: int | None
     send_temperature: bool
     json_mode: bool
-    thinking: str | None
-    reasoning: str | None
     enabled: bool
     is_default: bool
     sort_order: int
@@ -215,8 +213,6 @@ class ModelAdminOut(BaseModel):
             pool_max_workers=m.pool_max_workers,
             send_temperature=m.send_temperature,
             json_mode=m.json_mode,
-            thinking=m.thinking,
-            reasoning=m.reasoning,
             enabled=m.enabled,
             is_default=m.is_default,
             sort_order=m.sort_order,
@@ -237,8 +233,6 @@ class ModelIn(BaseModel):
     pool_max_workers: int | None = Field(default=None, ge=1, le=128)
     send_temperature: bool = True
     json_mode: bool = False
-    thinking: Literal["enabled", "disabled"] | None = None
-    reasoning: str | None = Field(default=None, max_length=32)
     enabled: bool = True
     is_default: bool = False
     sort_order: int = 0
@@ -256,8 +250,6 @@ class ModelPatch(BaseModel):
     pool_max_workers: int | None = Field(default=None, ge=1, le=128)
     send_temperature: bool | None = None
     json_mode: bool | None = None
-    thinking: Literal["enabled", "disabled"] | None = None
-    reasoning: str | None = Field(default=None, max_length=32)
     enabled: bool | None = None
     is_default: bool | None = None
     sort_order: int | None = None

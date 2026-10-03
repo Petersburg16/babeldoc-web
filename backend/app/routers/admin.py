@@ -466,8 +466,6 @@ def test_model(model_id: int, db: DbDep, ctx: CtxDep) -> ModelTestOut:
         api_key=ctx.secrets.decrypt(m.api_key_enc),
         model=m.model,
         send_temperature=m.send_temperature,
-        thinking=m.thinking,
-        reasoning=m.reasoning,
     )
 
 

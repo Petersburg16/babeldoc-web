@@ -73,6 +73,7 @@ class ModelProfile(Base):
     pool_max_workers: Mapped[int | None] = mapped_column(default=None)
     send_temperature: Mapped[bool] = mapped_column(default=True)
     json_mode: Mapped[bool] = mapped_column(default=False)
+    # 已停用：翻译不开思考（开了就不能发 temperature=0，公式标记会不稳），保留列只为免迁移
     thinking: Mapped[str | None] = mapped_column(String(16), default=None)
     reasoning: Mapped[str | None] = mapped_column(String(32), default=None)
     enabled: Mapped[bool] = mapped_column(default=True)

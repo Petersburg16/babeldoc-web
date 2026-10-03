@@ -22,8 +22,6 @@
     pool_max_workers: string;
     send_temperature: boolean;
     json_mode: boolean;
-    thinking: '' | 'enabled' | 'disabled';
-    reasoning: string;
     enabled: boolean;
     is_default: boolean;
     sort_order: number;
@@ -67,8 +65,6 @@
       pool_max_workers: '',
       send_temperature: true,
       json_mode: false,
-      thinking: '',
-      reasoning: '',
       enabled: true,
       is_default: models.length === 0,
       sort_order: models.length,
@@ -92,8 +88,6 @@
       pool_max_workers: m.pool_max_workers ? String(m.pool_max_workers) : '',
       send_temperature: m.send_temperature,
       json_mode: m.json_mode,
-      thinking: m.thinking ?? '',
-      reasoning: m.reasoning ?? '',
       enabled: m.enabled,
       is_default: m.is_default,
       sort_order: m.sort_order,
@@ -111,8 +105,6 @@
       pool_max_workers: d.pool_max_workers.trim() ? Number(d.pool_max_workers) : null,
       send_temperature: d.send_temperature,
       json_mode: d.json_mode,
-      thinking: d.thinking || null,
-      reasoning: d.reasoning.trim() || null,
       enabled: d.enabled,
       is_default: d.is_default,
       sort_order: Number(d.sort_order) || 0,
@@ -344,18 +336,6 @@
             <div>
               <label class="label" for="m-workers">工作线程数 <span class="font-normal text-muted">（可选）</span></label>
               <input id="m-workers" class="field" inputmode="numeric" placeholder="默认等于 QPS" bind:value={draft.pool_max_workers} />
-            </div>
-            <div>
-              <label class="label" for="m-thinking">思考模式（DeepSeek 等）</label>
-              <select id="m-thinking" class="field" bind:value={draft.thinking}>
-                <option value="">不发送</option>
-                <option value="disabled">关闭（推荐，更快更省）</option>
-                <option value="enabled">开启</option>
-              </select>
-            </div>
-            <div>
-              <label class="label" for="m-reasoning">推理强度 reasoning</label>
-              <input id="m-reasoning" class="field font-mono" placeholder="不发送；可填 minimal / low" bind:value={draft.reasoning} />
             </div>
             <div>
               <label class="label" for="m-order">排序</label>

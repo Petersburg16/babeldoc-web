@@ -35,8 +35,6 @@ def model_spec(profile: ModelProfile) -> dict[str, Any]:
         "pool_max_workers": profile.pool_max_workers,
         "send_temperature": profile.send_temperature,
         "json_mode": profile.json_mode,
-        "thinking": profile.thinking,
-        "reasoning": profile.reasoning,
     }
 
 

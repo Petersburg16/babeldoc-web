@@ -137,11 +137,7 @@ def make_translator_class():
 
 
 def build_translator(cls, spec: dict, model: dict, api_key: str):
-    kwargs: dict[str, Any] = {}
-    if model.get("reasoning"):
-        kwargs["reasoning"] = model["reasoning"]
-    if model.get("thinking"):
-        kwargs["thinking"] = model["thinking"]
+    # 不传 reasoning / thinking：翻译不开思考，开了就不能发 temperature=0
     return cls(
         lang_in=spec["lang_in"],
         lang_out=spec["lang_out"],
@@ -151,7 +147,6 @@ def build_translator(cls, spec: dict, model: dict, api_key: str):
         ignore_cache=bool(spec.get("ignore_cache")),
         enable_json_mode_if_requested=bool(model.get("json_mode")),
         send_temperature=model.get("send_temperature", True),
-        **kwargs,
     )
 
 

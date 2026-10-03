@@ -121,8 +121,6 @@ export interface ModelAdmin extends ModelPublic {
   pool_max_workers: number | null;
   send_temperature: boolean;
   json_mode: boolean;
-  thinking: 'enabled' | 'disabled' | null;
-  reasoning: string | null;
   enabled: boolean;
   sort_order: number;
   api_key_set: boolean;

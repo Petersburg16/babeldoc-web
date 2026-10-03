@@ -25,6 +25,7 @@ def test_build_spec_adds_term_profile_only_when_given(tmp_path):
     assert spec["model"]["term"]["base_url"] == "https://b.invalid/v1"
     assert spec["model"]["term"]["model"] == "t"
     assert spec["model"]["term"]["send_temperature"] is False
+    assert not {"reasoning", "thinking"} & (spec["model"].keys() | spec["model"]["term"].keys())
 
 
 def test_child_env_passes_term_key_only_when_set(monkeypatch):
