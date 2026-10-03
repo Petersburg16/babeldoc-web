@@ -109,7 +109,15 @@
   const focusOnMount = (node: HTMLInputElement) => node.focus();
 </script>
 
-<ToolFrame engines={['qpdf']} {runLabel} canRun={!blocked} {blocked} onrun={run} onreset={() => (files = [])}>
+<ToolFrame
+  resetKey={files}
+  engines={['qpdf']}
+  {runLabel}
+  canRun={!blocked}
+  {blocked}
+  onrun={run}
+  onreset={() => (files = [])}
+>
   {#snippet input()}
     <FilePicker bind:files accept="application/pdf,.pdf" hint="选好后会自动检查：需要密码，还是只限制了打印、复制" />
   {/snippet}

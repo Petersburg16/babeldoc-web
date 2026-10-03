@@ -23,7 +23,7 @@
   let controller: AbortController | null = null;
   $effect(() => () => controller?.abort());
 
-  async function run(report: Report) {
+  async function run(report: Report, stop: AbortSignal) {
     const [{ ocrPdf }, { unlockPdf }, { QpdfError }] = await Promise.all([
       import('../../../lib/pdf/ops/ocr'),
       import('../../../lib/pdf/input'),
@@ -41,6 +41,8 @@
       throw e;
     }
     controller = new AbortController();
+    const current = controller;
+    stop.addEventListener('abort', () => current.abort(), { once: true });
     const started = performance.now();
     try {
       const { pdf, ...rest } = await ocrPdf(unlocked.bytes, {
@@ -70,6 +72,7 @@
 </script>
 
 <ToolFrame
+  resetKey={files}
   engines={['qpdf', 'render', 'ocr']}
   runLabel="开始识别"
   canRun={files.length === 1 && !badRange}

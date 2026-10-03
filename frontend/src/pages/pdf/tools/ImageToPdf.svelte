@@ -30,6 +30,7 @@
 </script>
 
 <ToolFrame
+  resetKey={files}
   engines={['core']}
   runLabel={files.length > 1 ? `合成 ${files.length} 张图片` : '转为 PDF'}
   canRun={files.length > 0}

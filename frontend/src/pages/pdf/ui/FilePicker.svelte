@@ -88,7 +88,7 @@
 
   const showDrop = $derived(multiple || files.length === 0);
   // 中文与西文之间留空格：“拖拽 PDF 到这里”“拖拽图片到这里”
-  const kindText = $derived(/^[A-Za-z]/.test(kind) ? ` ${kind} ` : kind);
+  const kindText = $derived(`${/^[A-Za-z0-9]/.test(kind) ? ' ' : ''}${kind}${/[A-Za-z0-9]$/.test(kind) ? ' ' : ''}`);
 </script>
 
 <div class="flex flex-col gap-3">
@@ -100,7 +100,7 @@
         {disabled ? 'pointer-events-none opacity-60' : ''}"
       role="button"
       tabindex="0"
-      aria-label="选择或拖入{kindText}文件"
+      aria-label="选择或拖入{kindText}{kind.endsWith('文件') ? '' : '文件'}"
       ondragenter={(e) => {
         if (!e.dataTransfer?.types.includes('Files')) return;
         e.preventDefault();

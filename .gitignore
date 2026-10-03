@@ -9,6 +9,8 @@ __pycache__/
 backend/data/
 data/
 backups/
+# PDF 工具引擎文件（pdf-assets sync 生成，可随时重新下载）
+.pdf-assets/
 
 # 前端
 frontend/node_modules/

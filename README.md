@@ -1,7 +1,7 @@
 # BabelDOC Web
 
-自托管的多用户学术 PDF 翻译站：上传论文，保留公式、图表与版式，生成**双语对照**和**纯译文** PDF。
-A self-hosted, multi-user web service for [BabelDOC](https://github.com/funstory-ai/BabelDOC).
+自托管的多用户学术 PDF 翻译站：上传论文，保留公式、图表与版式，生成**双语对照**和**纯译文** PDF；另带一套在浏览器里运行的 **PDF 处理工具**（合并、拆分、压缩、OCR、PDF 转 Word、Office 转 PDF 等）。
+A self-hosted, multi-user web service for [BabelDOC](https://github.com/funstory-ai/BabelDOC), plus in-browser PDF tools.
 
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -37,6 +37,22 @@ A self-hosted, multi-user web service for [BabelDOC](https://github.com/funstory
 - 下载双语 / 译文 / 自动提取的术语表 / 原文，可在线预览；失败可重试，排队或进行中的任务可取消
 - 原文与译文按保留期（默认 30 天）自动删除，上传区和任务卡片都会提示还剩几天
 - 月度页数额度、修改昵称与密码、亮暗主题、手机可用
+
+### PDF 处理
+
+顶部「PDF 处理」标签里有 16 个工具。文件只在使用者自己的浏览器里处理，不上传到服务器；处理所需的引擎、语言包和字体全部由本站分发，不访问任何第三方 CDN，第一次用到某个工具时才下载它需要的引擎，之后由浏览器缓存。
+
+| 分类 | 工具 | 引擎（首次下载量，brotli 压缩后） |
+| --- | --- | --- |
+| 页面整理 | 合并、拆分 / 提取、页面整理（缩略图拖动排序、旋转、删除、插入空白页）、旋转 | qpdf（约 0.4 MB），页面整理另用 PDF.js |
+| 编辑 | 添加水印（文字含中文 / 图片）、添加页码（含“第 1 页”格式）、文档属性（查看、修改、清除元数据） | pdf-lib；含中文时下载所选字体（约 6–10 MB） |
+| 格式转换 | PDF 转图片、图片转 PDF、PDF 转 Word、Office 转 PDF、转为 PDF/A | PDF.js；PyMuPDF + pdf2docx（约 40 MB）；LibreOffice（约 58 MB，中文文档另需字体）；Ghostscript（约 11 MB） |
+| 优化与识别 | 压缩（无损 / 标准 / 强力 / 高质量）、OCR 文字识别（中英文，生成可搜索 PDF） | Ghostscript；Tesseract 与中英文语言包（约 6 MB） |
+| 安全 | 加密（打开密码、权限）、解除密码 / 权限限制 | qpdf |
+
+- 加密的 PDF 会先询问打开密码；知网等来源常见的“只限制权限”的文件会自动处理；
+- Office 转 PDF 时按文档用到的字体注入中文字体：宋体→思源宋体、黑体 / 雅黑 / 等线→思源黑体、楷体→霞鹜文楷、仿宋→朱雀仿宋，Times New Roman、Arial、Calibri、Cambria 等用度量兼容的开源字体；转换时浏览器约占 1.5 GB 内存，需要电脑端浏览器；
+- 处理逻辑移植自 [BentoPDF](https://github.com/alam00000/bentopdf)（AGPL-3.0），界面按本站设计重写。用到的第三方组件与许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ### 管理员
 
@@ -76,6 +92,14 @@ A self-hosted, multi-user web service for [BabelDOC](https://github.com/funstory
 
 babeldoc 自身的输出（包括它保存 PDF 时 fork 出的子进程）都被重定向到 stderr，落盘为任务日志，不会污染协议通道。
 
+### PDF 工具的资源分发
+
+- **清单与锁文件**：`frontend/pdf-assets.json` 列出每个引擎需要的运行时文件（来自 npm 包或固定版本的网址），`cd backend && uv run python -m app.cli pdf-assets lock` 生成 `frontend/pdf-assets.lock.json`，记录每个文件的 sha256 与压缩后大小。锁文件入库，是资源的唯一事实源；
+- **同步**：`pdf-assets sync` 按锁文件从 npm 官方源和固定网址下载、逐个校验，生成 `.br` / `.gz` 预压缩副本，落到 `BDW_PDF_ASSETS_DIR/<引擎>/<版本>/`。版本只由该引擎自己的文件决定，升级一个引擎不影响其他引擎的缓存；已有版本里和 `--seed` 目录里哈希相同的文件直接硬链接复用（部署时用它复用 BabelDOC 已下载的中文字体）；
+- **分发**：后端在 `/pdf-assets/` 下按 `Accept-Encoding` 选用预压缩副本，`Cache-Control: immutable, no-transform`；
+- **浏览器端**：引擎下载后存进 Cache Storage（几十 MB 的单个文件放不进浏览器 HTTP 缓存），`/pdf-sw.js` 只接管 `/pdf-assets/` 的请求，让各个库自己发出的请求也命中缓存；
+- **跨源隔离**：LibreOffice WASM 需要 `SharedArrayBuffer`，所以页面和脚本都带 `Cross-Origin-Opener-Policy: same-origin` 与 `Cross-Origin-Embedder-Policy: require-corp`（任务文件的预览和下载除外）。站点只用同源资源，不受影响；若在 Cloudflare 上开了 Web Analytics 等会注入第三方脚本的功能，需对本站关掉。
+
 ### 设计要点
 
 - **防“假成功”**：BabelDOC 会吞掉段落级的接口错误并保留原文，API Key 失效时任务照样“成功”。所以 runner 有两道防线：开工前用一个极短的请求预检模型接口；翻译中统计每次请求的成败，全部失败判任务失败，部分失败给出警告。
@@ -101,6 +125,16 @@ cd frontend
 npm install
 npm run dev                                       # http://localhost:5173
 ```
+
+PDF 工具的引擎文件需要先同步到本地一次（约 250 MB 原始大小），并让后端知道目录：
+
+```bash
+cd backend
+uv run python -m app.cli pdf-assets sync --dest ../.pdf-assets   # 可加 BDW_NPM_REGISTRY=<镜像地址>
+BDW_PDF_ASSETS_DIR=../.pdf-assets BDW_DEV=1 uv run uvicorn app.main:create_app --factory --reload --port 8000
+```
+
+增删或升级前端里提供运行时文件的 npm 包后，先 `npm install`，再在 `backend` 里运行 `uv run python -m app.cli pdf-assets lock` 更新锁文件。
 
 模拟引擎只依赖标准库，会把原文复制一份当作“译文”，不需要安装 BabelDOC。提交任务前仍要在「管理后台 → 模型」添加一个模型（模拟模式下不会真的调用，地址和 Key 可以随便填）。开发模式下可以访问 `/api/docs` 查看接口文档。
 
@@ -143,7 +177,7 @@ bash deploy/deploy.sh <ssh主机别名>
 
 1. 本地构建前端；
 2. 把工作区（git 跟踪的文件 + 未被忽略的新文件，不要求先提交）连同 `frontend/dist` 打包，上传为一个新版本；
-3. 在服务器上执行 `deploy/remote.sh install`：同步后端和引擎两套依赖，首次补齐 BabelDOC 离线资产，按需更新 systemd 单元，切换版本并重启；
+3. 在服务器上执行 `deploy/remote.sh install`：同步后端和引擎两套依赖，首次补齐 BabelDOC 离线资产，按锁文件同步 PDF 工具的引擎（只下载变化了的引擎，失败则不切换版本），按需更新 systemd 单元，切换版本并重启；
 4. 健康检查，不通过就自动回滚到上一个版本。
 
 几个细节：
@@ -169,7 +203,8 @@ bash deploy/deploy.sh <ssh主机别名>
 
 1. Cloudflare Zero Trust → Networks → Tunnels，选择服务器上的隧道（没有就新建）→ Public hostnames → Add：填一个子域名，Service 选 `HTTP`，URL 填 `127.0.0.1:8090`；
 2. 把服务器上 `/opt/babeldoc-web/shared/env` 里的 `BDW_COOKIE_SECURE` 改为 `true`，再执行 `systemctl restart babeldoc-web`；
-3. Cloudflare 免费版单个请求的上限是 100 MB，站点默认单文件上限 50 MB；在系统设置里调大时不要超过 100 MB。
+3. Cloudflare 免费版单个请求的上限是 100 MB，站点默认单文件上限 50 MB；在系统设置里调大时不要超过 100 MB；
+4. 可选：Cloudflare 默认不缓存 `.wasm`、`.data` 等扩展名，想让 PDF 引擎文件也走边缘缓存，可以加一条缓存规则，对 `/pdf-assets/*` 设为“符合缓存条件”（这些路径带版本号，内容不会变）。
 
 也可以用本机的 Caddy、nginx 等反向代理。只要请求来自本机，后端就会从 `CF-Connecting-IP`、`X-Real-IP` 或 `X-Forwarded-For` 取真实的客户端 IP，登录限流按这个 IP 计数。进度推送用的 SSE 每 15 秒发一次心跳，以免被代理的空闲超时断开。
 
@@ -182,7 +217,7 @@ bash deploy/deploy.sh <ssh主机别名>
 | `/opt/babeldoc-web/releases/<版本>` | 各版本的代码，`current` 软链接指向当前版本，保留最近 5 个 |
 | `/opt/babeldoc-web/shared/env` | 运行配置，首次安装时由 `deploy/env.example` 生成 |
 | `/opt/babeldoc-web/{python,uv-cache}` | uv 管理的 Python 与依赖缓存 |
-| `/var/lib/babeldoc-web` | 数据：`app.db`、`jobs/`、`secret.key`、BabelDOC 模型缓存 |
+| `/var/lib/babeldoc-web` | 数据：`app.db`、`jobs/`、`secret.key`、BabelDOC 模型缓存、`pdf-assets/`（PDF 工具引擎，每个引擎保留最近 2 个版本） |
 | `/var/backups/babeldoc-web` | 每日备份，只有 root 可读 |
 
 常用命令（`R=/opt/babeldoc-web/current/deploy/remote.sh`）：
@@ -238,8 +273,10 @@ bash deploy/deploy.sh <ssh主机别名>
 | `BDW_ENGINE_PYTHON` | `engine/.venv` 中的 Python | 运行 runner 的解释器 |
 | `BDW_ENGINE_DIR` | `engine/` | runner 所在目录 |
 | `BDW_FRONTEND_DIR` | `frontend/dist` | 后端托管的前端构建产物目录 |
+| `BDW_PDF_ASSETS_DIR` | 数据目录下的 `pdf-assets` | PDF 工具引擎文件所在目录（由 `pdf-assets sync` 生成） |
+| `BDW_NPM_REGISTRY` | `https://registry.npmjs.org/` | `pdf-assets sync` 下载 npm 包时用的源，只影响下载地址，校验和不变 |
 
-前端开发服务器另外读取 `BDW_BACKEND`（默认 `http://127.0.0.1:8000`），作为 `/api` 的代理目标。
+前端开发服务器另外读取 `BDW_BACKEND`（默认 `http://127.0.0.1:8000`），作为 `/api` 和 `/pdf-assets/` 的代理目标。
 
 ### 系统设置
 
@@ -303,8 +340,9 @@ BabelDOC 根据语言代码里的地区标记（CN / TW / HK / JP / KR）选择�
 ## 致谢
 
 - [BabelDOC](https://github.com/funstory-ai/BabelDOC)：翻译与排版引擎，本项目的核心能力都来自它；
-- [DocBabel](https://github.com/ccsert/DocBabel)：功能设计参考。
+- [DocBabel](https://github.com/ccsert/DocBabel)：功能设计参考；
+- [BentoPDF](https://github.com/alam00000/bentopdf)：PDF 处理工具的处理逻辑来源，以及 qpdf、PDF.js、pdf-lib、Ghostscript、PyMuPDF、Tesseract、LibreOffice 等开源项目（见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)）。
 
 ## 许可
 
-本项目以 [AGPL-3.0](LICENSE) 发布，与 BabelDOC 一致。根据 AGPL 第 13 条，如果你修改了本项目或 BabelDOC，并以网络服务的形式提供给他人使用，需要向这些用户提供修改后的源代码。站点页脚已标注翻译引擎与许可。
+本项目以 [AGPL-3.0](LICENSE) 发布，与 BabelDOC 一致。根据 AGPL 第 13 条，如果你修改了本项目或 BabelDOC，并以网络服务的形式提供给他人使用，需要向这些用户提供修改后的源代码。站点页脚已标注翻译引擎与许可，「PDF 处理」页底部有 BentoPDF 署名与源码链接。

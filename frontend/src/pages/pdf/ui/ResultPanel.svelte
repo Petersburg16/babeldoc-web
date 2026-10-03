@@ -58,7 +58,10 @@
     {#each outputs as out, i (i)}
       <li class="flex items-center gap-3 rounded-xl border border-line bg-surface-2/40 px-3 py-2">
         <div class="min-w-0 flex-1">
-          <p class="truncate text-[13.5px] font-medium" title={out.name}>{out.name}</p>
+          <!-- 中间省略：拆分出的文件名只有结尾（“-第1-5页.pdf”）不同，窄屏上要保留结尾 -->
+          <p class="flex min-w-0 text-[13.5px] font-medium" title={out.name}>
+            <span class="truncate">{out.name.slice(0, -12)}</span><span class="shrink-0 whitespace-pre">{out.name.slice(-12)}</span>
+          </p>
           <p class="text-[12px] text-muted">{bytes(out.blob.size)}</p>
         </div>
         <button class="btn btn-secondary btn-sm" onclick={() => download(out)}><Download class="size-3.5" /> 下载</button>

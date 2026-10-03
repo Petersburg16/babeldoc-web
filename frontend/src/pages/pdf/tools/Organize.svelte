@@ -308,6 +308,7 @@
 <svelte:window onkeydown={onKey} ondragover={onDragOver} ondrop={onDrop} />
 
 <ToolFrame
+  resetKey={files}
   engines={['qpdf', 'render']}
   stacked
   runLabel="导出整理后的 PDF"

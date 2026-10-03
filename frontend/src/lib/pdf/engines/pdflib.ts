@@ -1,10 +1,12 @@
 // pdf-lib（@cantoo 维护的分支）：写文字/图片、改元数据、图片转 PDF。原版 pdf-lib 2021 年后不再维护，
 // 也不能解密；@cantoo/fontkit 子集化思源/文楷这类长 loca 表的 TTF 时不会写坏字形（原版 fontkit 会）。
 // 中文字体只在文字里真有非西文字符时才下载，西文直接用内置 Helvetica。
-import type { PDFDocument, PDFFont } from '@cantoo/pdf-lib';
+import type { PDFDocument, PDFFont, PDFPage } from '@cantoo/pdf-lib';
 import { assetBytes, type EngineId, engines, type Progress } from '../engines.svelte';
 
 export const loadPdfLib = () => import('@cantoo/pdf-lib');
+
+export type PdfLib = Awaited<ReturnType<typeof loadPdfLib>>;
 
 let fontkit: Promise<unknown> | null = null;
 function loadFontkit() {
@@ -68,4 +70,29 @@ export async function openPdfLib(bytes: Uint8Array) {
 /** 保存；保留对象流压缩，体积更小 */
 export async function savePdfLib(doc: PDFDocument) {
   return doc.save({ useObjectStreams: true });
+}
+
+/**
+ * 让页面有自己的一份 Resources 再往里加字体和透明度。jsPDF、ReportLab 等生成的文件常让各页共用同一个
+ * Resources（或其中的 Font 字典），也可能从页树继承；pdf-lib 会把这个共用字典直接挂到每页上，
+ * 每页加的键大家都有，保存时又在每页内联写一遍，体积随页数平方增长（300 页 117 KB 的文件会变成上百 MB）。
+ * 必须在该页第一次绘制之前调用。
+ */
+export function ownResources(lib: Pick<PdfLib, 'PDFArray' | 'PDFDict' | 'PDFName' | 'PDFRef'>, page: PDFPage) {
+  const { PDFArray, PDFDict, PDFName, PDFRef } = lib;
+  const node = page.node;
+  const ctx = node.context;
+  const res = node.Resources();
+  const own = res ? res.clone(ctx) : ctx.obj({});
+  for (const key of ['Font', 'XObject', 'ExtGState']) {
+    const sub = own.lookupMaybe(PDFName.of(key), PDFDict);
+    if (sub) own.set(PDFName.of(key), sub.clone(ctx));
+  }
+  node.set(PDFName.Resources, own);
+  // Contents 指向几页共用的数组时，新加的内容流会出现在每一页上
+  const contents = node.get(PDFName.Contents);
+  if (contents instanceof PDFRef) {
+    const array = ctx.lookup(contents);
+    if (array instanceof PDFArray) node.set(PDFName.Contents, array.clone(ctx));
+  }
 }

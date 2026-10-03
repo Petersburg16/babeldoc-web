@@ -52,6 +52,7 @@
 </script>
 
 <ToolFrame
+  resetKey={files}
   engines={['qpdf']}
   runLabel={spec.trim() ? '旋转所选页面' : '旋转全部页面'}
   canRun={!!file && !specError}

@@ -262,6 +262,12 @@
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-soft);
   }
+  .field[aria-invalid='true'] {
+    border-color: var(--bad);
+  }
+  .field[aria-invalid='true']:focus {
+    box-shadow: 0 0 0 3px var(--bad-soft);
+  }
   .field:disabled {
     background: var(--surface-2);
     color: var(--muted);

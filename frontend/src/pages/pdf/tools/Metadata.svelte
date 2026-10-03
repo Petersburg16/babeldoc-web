@@ -190,6 +190,7 @@
 </script>
 
 <ToolFrame
+  resetKey={files}
   engines={['qpdf']}
   runLabel={clearAll ? '清除全部元数据' : '保存属性'}
   canRun={!!source && !loading && (clearAll || (!!edit && !customError))}

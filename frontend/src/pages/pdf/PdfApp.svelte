@@ -20,4 +20,14 @@
   <NotFound />
 {/if}
 
+<!-- 文件拖到工具区以外时浏览器会直接打开它，正在处理的内容就丢了；没被拖放区接住的一律拦下 -->
+<svelte:window
+  ondragover={(e) => {
+    if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
+  }}
+  ondrop={(e) => {
+    if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
+  }}
+/>
+
 <PasswordHost />

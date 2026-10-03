@@ -86,6 +86,7 @@
 </script>
 
 <ToolFrame
+  resetKey={files}
   engines={['qpdf']}
   runLabel="添加页码"
   canRun={files.length === 1 && !problem}

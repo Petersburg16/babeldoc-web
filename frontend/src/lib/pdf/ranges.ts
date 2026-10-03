@@ -26,8 +26,9 @@ export function parseRanges(spec: string, total: number): PageRange[] {
       start = m[1] ? Number(m[1]) : 1;
       end = m[2] ? Number(m[2]) : total;
     }
-    if (start < 1 || end < start) throw new Error(`页码范围无效：${token}`);
+    if (start < 1) throw new Error(`页码范围无效：${token}`);
     if (start > total) throw new Error(`第 ${start} 页超出总页数（共 ${total} 页）`);
+    if (end < start) throw new Error(`页码范围无效：${token}`);
     return { start, end: Math.min(end, total) };
   });
 }

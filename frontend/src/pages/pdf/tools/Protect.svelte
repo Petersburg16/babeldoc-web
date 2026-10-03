@@ -81,6 +81,7 @@
 {/snippet}
 
 <ToolFrame
+  resetKey={files}
   engines={['qpdf']}
   runLabel="加密 PDF"
   canRun={!problem}

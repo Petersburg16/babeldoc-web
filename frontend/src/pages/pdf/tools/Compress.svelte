@@ -40,6 +40,7 @@
 </script>
 
 <ToolFrame
+  resetKey={files}
   engines={['qpdf', 'ghostscript']}
   runLabel={files.length > 1 ? `压缩 ${files.length} 个文件` : '压缩 PDF'}
   canRun={files.length > 0}

@@ -98,14 +98,22 @@
           : '这个文件无法转换',
   );
 
-  async function run(report: Report) {
+  async function run(report: Report, stop: AbortSignal) {
     // ToolFrame 下载完引擎才调用这里：下载途中已离开页面的，不再启动 LibreOffice
     if (leaving.signal.aborted) throw new Cancelled();
     failed = [];
     started = true;
     const list = [...files];
     const { officeToPdf } = await import('../../../lib/pdf/ops/office');
-    const result = await officeToPdf(list, { pdfa }, report, leaving.signal);
+    // 点“停止”和离开页面一样：中止并关掉引擎（下次转换从缓存重新启动，约 1–2 秒）
+    const job = new AbortController();
+    const abort = () => {
+      job.abort();
+      void import('../../../lib/pdf/office/engine').then((m) => m.releaseOffice());
+    };
+    leaving.signal.addEventListener('abort', () => job.abort(), { once: true });
+    stop.addEventListener('abort', abort, { once: true });
+    const result = await officeToPdf(list, { pdfa }, report, job.signal);
     failed = result.failed;
     return result.outputs;
   }
@@ -117,6 +125,7 @@
 </script>
 
 <ToolFrame
+  resetKey={files}
   engines={['libreoffice']}
   runLabel={usable > 1 ? `转换 ${usable} 个文件` : '转为 PDF'}
   canRun={isolated && usable > 0}

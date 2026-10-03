@@ -35,9 +35,18 @@ export class QpdfError extends Error {
     public code: number,
     public log: string,
   ) {
-    const wrongPassword = /invalid password/i.test(log);
-    const detail = log.trim().split('\n').pop() ?? '';
-    super(wrongPassword ? '密码不正确' : `PDF 处理失败${detail ? `：${detail}` : ''}`);
+    super(QpdfError.describe(code, log));
+  }
+
+  /** 把 qpdf 的英文输出换成用户看得懂的中文，去掉内存文件系统里的路径（/in.pdf: …） */
+  static describe(code: number, log: string) {
+    if (/invalid password/i.test(log)) return '密码不正确';
+    if (/startxref|not a PDF|unable to find trailer|EOF|file is damaged|can't find PDF header|xref/i.test(log)) {
+      return '文件已损坏，或不是有效的 PDF';
+    }
+    if (code === -1) return 'PDF 处理引擎出错，请重试';
+    const detail = (log.trim().split('\n').pop() ?? '').replace(/^\/[\w.-]+:\s*/, '').replace(/^qpdf:\s*/, '');
+    return `PDF 处理失败${detail ? `：${detail}` : ''}`;
   }
 }
 
@@ -51,6 +60,8 @@ export interface QpdfResult {
  * 跑一条 qpdf 命令。inputs 以 /<名字> 写入内存文件系统（名字只用 ASCII，用户文件名可能是中文）；
  * outputs 为要读回的文件名，传 null 读回命令新建的全部文件。输入会被复制后转交 worker，调用方的数据不受影响。
  * 退出码 0 为成功，3 为成功但有警告（真实世界的 PDF 很常见），其余抛出 QpdfError。
+ * 注意：qpdf 的日志对象在同一模块实例里是全局的，一旦有命令往标准输出打印过（如 --show-npages），
+ * 之后再把 --json 输出到标准输出会报错；要 JSON 时写到文件（--json=2 ... /o.json）再读回。
  */
 export function runQpdf(
   args: string[],

@@ -25,7 +25,7 @@
 
 | 引擎 | 组件 | 许可证 |
 | --- | --- | --- |
-| render | PDF.js 的 CMap、标准字体、OpenJPEG / JBIG2 / qcms 解码器 | Apache-2.0；CMap 为 BSD-3-Clause（Adobe）；字体与解码器见其中的 LICENSE 文件 |
+| render | PDF.js 的 CMap、标准字体（含 Liberation Sans，页码工具在 PDF/A 等文件里会嵌入其子集）、OpenJPEG / JBIG2 / qcms 解码器 | Apache-2.0；CMap 为 BSD-3-Clause（Adobe）；Liberation 字体为 SIL OFL 1.1；其余字体与解码器见其中的 LICENSE 文件 |
 | qpdf | [qpdf](https://github.com/qpdf/qpdf) 12.2.0 | Apache-2.0 |
 | ocr | [Tesseract](https://github.com/tesseract-ocr/tesseract)（tesseract.js-core）、[tessdata_best](https://github.com/tesseract-ocr/tessdata_best) 英文与简体中文模型 | Apache-2.0 |
 | ghostscript | [Ghostscript](https://ghostscript.com/) 10.06.0（[@bentopdf/gs-wasm](https://github.com/alam00000/bentopdf-gs-wasm)） | AGPL-3.0 |

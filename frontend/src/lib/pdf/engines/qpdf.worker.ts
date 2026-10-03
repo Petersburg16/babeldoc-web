@@ -35,46 +35,71 @@ console.log = (...a: unknown[]) => (sink ? void sink.push(a.join(' ')) : log0(..
 console.error = (...a: unknown[]) => (sink ? void sink.push(a.join(' ')) : err0(...a));
 
 let mod: Promise<QpdfModule> | null = null;
+let calls = 0;
+
+// qpdf-wasm 同一个模块实例连续跑两三百条命令后会内存越界崩溃（与文件大小无关），
+// 所以每 100 条命令换一个新实例；万一仍然崩溃，换实例后把这条命令重跑一次
+const REBUILD_EVERY = 100;
+
+function load(wasmUrl: string) {
+  if (calls >= REBUILD_EVERY) {
+    mod = null;
+    calls = 0;
+  }
+  mod ??= (createModule as unknown as (o: object) => Promise<QpdfModule>)({ locateFile: () => wasmUrl });
+  return mod;
+}
+
+async function execute({ wasmUrl, args, inputs, outputs }: QpdfRequest) {
+  const q = await load(wasmUrl);
+  calls += 1;
+  const files: Record<string, Uint8Array> = {};
+  const before = new Set(q.FS.readdir('/'));
+  for (const [name, data] of Object.entries(inputs)) q.FS.writeFile('/' + name, data);
+  sink = [];
+  let code: number;
+  let crashed = false;
+  try {
+    code = q.callMain([...args]);
+  } catch (e) {
+    code = -1; // 只有 abort / 内存越界会走到这里，这个实例之后不可再用
+    crashed = true;
+    sink.push(String(e));
+    mod = null;
+    calls = 0;
+  }
+  const log = sink.join('\n').replace(/^[^\n:]*?(this\.program|qpdf[^:]*|[\w.-]+\.m?js): /gm, '');
+  sink = null;
+  if (crashed) return { code, log, files, crashed };
+  const created = q.FS.readdir('/').filter((n) => !before.has(n) && !(n in inputs));
+  for (const name of outputs ?? created) {
+    try {
+      files[name] = q.FS.readFile('/' + name);
+    } catch {
+      /* 没有生成 */
+    }
+  }
+  for (const name of [...Object.keys(inputs), ...created]) {
+    try {
+      q.FS.unlink('/' + name);
+    } catch {
+      /* 已删除 */
+    }
+  }
+  return { code, log, files, crashed };
+}
 
 self.onmessage = async (event: MessageEvent<QpdfRequest>) => {
-  const { id, wasmUrl, args, inputs, outputs } = event.data;
-  const files: Record<string, Uint8Array> = {};
+  const { id } = event.data;
   try {
-    mod ??= (createModule as unknown as (o: object) => Promise<QpdfModule>)({ locateFile: () => wasmUrl });
-    const q = await mod;
-    const before = new Set(q.FS.readdir('/'));
-    for (const [name, data] of Object.entries(inputs)) q.FS.writeFile('/' + name, data);
-    sink = [];
-    let code: number;
-    try {
-      code = q.callMain([...args]);
-    } catch (e) {
-      code = -1; // 只有 abort / 内存不足会走到这里，模块之后不可再用
-      sink.push(String(e));
-      mod = null;
-    }
-    const log = sink.join('\n').replace(/^[^\n:]*?(this\.program|qpdf[^:]*|[\w.-]+\.m?js): /gm, '');
-    sink = null;
-    const created = q.FS.readdir('/').filter((n) => !before.has(n) && !(n in inputs));
-    for (const name of outputs ?? created) {
-      try {
-        files[name] = q.FS.readFile('/' + name);
-      } catch {
-        /* 没有生成 */
-      }
-    }
-    for (const name of [...Object.keys(inputs), ...created]) {
-      try {
-        q.FS.unlink('/' + name);
-      } catch {
-        /* 已删除 */
-      }
-    }
+    let result = await execute(event.data);
+    if (result.crashed) result = await execute(event.data);
+    const { code, log, files } = result;
     const transfer = Object.values(files).map((f) => f.buffer as ArrayBuffer);
     (self as unknown as Worker).postMessage({ id, code, log, files } satisfies QpdfResponse, transfer);
   } catch (err) {
     sink = null;
     mod = null; // wasm 加载失败：下次重建
-    (self as unknown as Worker).postMessage({ id, code: -1, log: String(err), files } satisfies QpdfResponse);
+    (self as unknown as Worker).postMessage({ id, code: -1, log: String(err), files: {} } satisfies QpdfResponse);
   }
 };

@@ -40,8 +40,9 @@
 </script>
 
 <ToolFrame
+  resetKey={files}
   engines={['qpdf']}
-  runLabel="合并 {files.length || ''} 个文件"
+  runLabel={files.length >= 2 ? `合并 ${files.length} 个文件` : '合并 PDF'}
   canRun={files.length >= 2 && !badRange}
   blocked={badRange ? '页码范围写法有误' : '至少选择两个 PDF'}
   onrun={run}

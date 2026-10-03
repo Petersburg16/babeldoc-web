@@ -4,7 +4,7 @@
 // 横放或裁过边的页面上水印会偏到别处。这里按读者实际看到的页面摆放。
 import type { PDFDocument, PDFImage, PDFOperator, PDFPage } from '@cantoo/pdf-lib';
 import type { Progress } from '../engines.svelte';
-import { type CjkFont, fontForText, loadPdfLib, openPdfLib, savePdfLib } from '../engines/pdflib';
+import { type CjkFont, fontForText, loadPdfLib, openPdfLib, ownResources, savePdfLib } from '../engines/pdflib';
 import { expandRanges } from '../ranges';
 
 type PdfLib = Awaited<ReturnType<typeof loadPdfLib>>;
@@ -126,31 +126,6 @@ export function watermarkLines(text: string) {
   while (lines.length && !lines[0].trim()) lines.shift();
   while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
   return lines;
-}
-
-/**
- * 让页面有自己的一份 Resources 再往里加字体和透明度。jsPDF、ReportLab 等生成的文件常让各页共用同一个
- * Resources（或其中的 Font 字典），也可能从页树继承；pdf-lib 会把这个共用字典直接挂到每页上，
- * 每页加的键大家都有，保存时又在每页内联写一遍，体积随页数平方增长（300 页 117 KB 的文件会变成上百 MB）。
- * 必须在该页第一次绘制之前调用。
- */
-export function ownResources(lib: PdfLib, page: PDFPage) {
-  const { PDFArray, PDFDict, PDFName, PDFRef } = lib;
-  const node = page.node;
-  const ctx = node.context;
-  const res = node.Resources();
-  const own = res ? res.clone(ctx) : ctx.obj({});
-  for (const key of ['Font', 'XObject', 'ExtGState']) {
-    const sub = own.lookupMaybe(PDFName.of(key), PDFDict);
-    if (sub) own.set(PDFName.of(key), sub.clone(ctx));
-  }
-  node.set(PDFName.Resources, own);
-  // Contents 指向几页共用的数组时，新加的内容流会出现在每一页上
-  const contents = node.get(PDFName.Contents);
-  if (contents instanceof PDFRef) {
-    const array = ctx.lookup(contents);
-    if (array instanceof PDFArray) node.set(PDFName.Contents, array.clone(ctx));
-  }
 }
 
 async function openForEdit(bytes: Uint8Array) {

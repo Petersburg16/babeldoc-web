@@ -4,6 +4,10 @@ import {
   beginMarkedContent,
   degrees,
   endMarkedContent,
+  PDFArray,
+  PDFDict,
+  PDFName,
+  PDFRef,
   rgb,
   type PDFDocument,
   type PDFFont,
@@ -11,7 +15,7 @@ import {
 } from '@cantoo/pdf-lib';
 import { assetBytes } from '../engines.svelte';
 import type { Report } from '../files';
-import { type CjkFont, fontForText, needsCjkFont, openPdfLib } from '../engines/pdflib';
+import { type CjkFont, fontForText, needsCjkFont, openPdfLib, ownResources } from '../engines/pdflib';
 import { expandRanges } from '../ranges';
 import { embedStandard, saveDoc } from './metadata';
 
@@ -121,6 +125,8 @@ export async function addPageNumbers(bytes: Uint8Array, o: PageNumberOptions, re
     const vx = o.align === 'left' ? m : o.align === 'right' ? f.w - m - width : (f.w - width) / 2;
     const vy = o.vertical === 'bottom' ? m + descent : f.h - m - ascent;
     const { x, y } = f.toUser(vx, vy);
+    // 先给这页一份自己的资源字典，免得各页共用资源的文件体积随页数平方增长
+    ownResources({ PDFArray, PDFDict, PDFName, PDFRef }, page);
     // 标成版面附属内容：带标签的文件（PDF/UA 等）里屏幕阅读器会跳过页码，也不算没有标签的正文
     page.pushOperators(beginMarkedContent('Artifact'));
     page.drawText(label, { x, y, size, font, color, rotate: degrees(f.rot) });

@@ -49,6 +49,7 @@
 </script>
 
 <ToolFrame
+  resetKey={files}
   engines={['qpdf', 'render']}
   runLabel="转为 {formatName}"
   canRun={files.length === 1 && !error}

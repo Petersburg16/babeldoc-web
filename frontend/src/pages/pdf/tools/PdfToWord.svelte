@@ -22,11 +22,13 @@
   let controller: AbortController | null = null;
   $effect(() => () => controller?.abort());
 
-  async function run(report: Report) {
+  async function run(report: Report, stop: AbortSignal) {
     warnings = [];
     const file = files[0];
     controller = new AbortController();
     const { signal } = controller;
+    const current = controller;
+    stop.addEventListener('abort', () => current.abort(), { once: true });
     try {
       const [{ unlockPdf }, { countPages }, { QpdfError }, { pdfToDocx }] = await Promise.all([
         import('../../../lib/pdf/input'),
@@ -63,6 +65,7 @@
 </script>
 
 <ToolFrame
+  resetKey={files}
   engines={['qpdf', 'pymupdf', 'pdf2docx']}
   runLabel="转为 Word"
   canRun={files.length === 1 && !badRange}

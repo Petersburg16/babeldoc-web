@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
+  import { type Snippet, untrack } from 'svelte';
   import ProgressBar from '../../../components/ProgressBar.svelte';
   import { bytes } from '../../../lib/format';
-  import { CircleAlert, LoaderCircle } from '../../../lib/icons';
+  import { CircleAlert, LoaderCircle, X } from '../../../lib/icons';
   import { type EngineId, engines } from '../../../lib/pdf/engines.svelte';
   import type { OutputFile, Report } from '../../../lib/pdf/files';
   import { CloudDownload } from '../../../lib/pdf/icons';
@@ -16,8 +16,11 @@
     canRun: boolean;
     /** 不能运行时的提示，例如“至少选择两个文件” */
     blocked?: string;
-    /** 执行处理：用 report 报告进度（0–1，null 表示不定），返回生成的文件 */
-    onrun: (report: Report) => Promise<OutputFile[]>;
+    /**
+     * 执行处理：用 report 报告进度（0–1，null 表示不定），返回生成的文件。
+     * 用户点“停止”时 signal 会中止；能中途停下的工具应在收到后抛出 Cancelled，其余工具的结果会被丢弃。
+     */
+    onrun: (report: Report, signal: AbortSignal) => Promise<OutputFile[]>;
     input: Snippet;
     options?: Snippet;
     /** 结果上方的补充说明 */
@@ -27,6 +30,8 @@
     onreset?: () => void;
     /** 选项放在文件下方（适合需要大面积展示的工具） */
     stacked?: boolean;
+    /** 输入变化的标识（通常传所选文件）：变化时清掉上一次的结果和报错 */
+    resetKey?: unknown;
   }
 
   let {
@@ -41,6 +46,7 @@
     zipName,
     onreset,
     stacked = false,
+    resetKey,
   }: Props = $props();
 
   let phase = $state<'idle' | 'download' | 'run'>('idle');
@@ -48,45 +54,98 @@
   let status = $state('');
   let error = $state('');
   let outputs = $state<OutputFile[]>([]);
+  let controller: AbortController | null = null;
 
   const pending = $derived(engines.pendingBytes(needed));
   const busy = $derived(phase !== 'idle');
+  // 引擎名以西文开头时与前面的中文隔一个空格：“下载 qpdf 页面与加密引擎”“下载思源黑体”
+  const engineLabel = $derived.by(() => {
+    const label = engines.label(needed);
+    return /^[A-Za-z0-9]/.test(label) ? ` ${label}` : label;
+  });
 
   $effect(() => {
     void engines.refresh();
   });
 
+  $effect(() => {
+    void resetKey;
+    untrack(() => {
+      if (busy) return;
+      outputs = [];
+      error = '';
+    });
+  });
+
+  $effect(() => () => controller?.abort());
+
+  function message(e: unknown) {
+    const raw = e instanceof Error ? e.message : String(e);
+    const name = e instanceof Error || e instanceof DOMException ? e.name : '';
+    if (name === 'QuotaExceededError') return '浏览器存储空间不足，引擎无法缓存，请清理磁盘或浏览器数据后重试';
+    if (e instanceof TypeError && /fetch|network|load failed/i.test(raw)) {
+      return phase === 'download' ? '引擎下载失败：网络连接中断，请检查网络后重试' : '网络连接中断，请检查网络后重试';
+    }
+    return raw;
+  }
+
   async function run() {
     if (busy || !canRun) return;
     error = '';
     outputs = [];
+    const job = new AbortController();
+    controller = job;
+    const { signal } = job;
+    const report: Report = (value, text) => {
+      if (signal.aborted) return;
+      fraction = value;
+      if (text) status = text;
+    };
     try {
       if (engines.pendingBytes(needed) > 0) {
         phase = 'download';
         fraction = 0;
-        status = `正在下载${engines.label(needed)}`;
-        await engines.ensure(needed, (p) => {
-          fraction = p.total ? p.loaded / p.total : null;
-        });
+        status = `正在下载${engineLabel}`;
+        await engines.ensure(needed, (p) => report(p.total ? p.loaded / p.total : null), signal);
       } else {
-        await engines.ensure(needed);
+        await engines.ensure(needed, undefined, signal);
       }
+      if (signal.aborted) throw new Cancelled();
       phase = 'run';
       fraction = null;
       status = '正在处理…';
-      outputs = await onrun((value, text) => {
-        fraction = value;
-        if (text) status = text;
-      });
+      const result = await onrun(report, signal);
+      if (!signal.aborted) outputs = result;
     } catch (e) {
-      if (!(e instanceof Cancelled)) {
+      const aborted = signal.aborted || (e instanceof DOMException && e.name === 'AbortError');
+      if (!(e instanceof Cancelled) && !aborted) {
         console.error(e);
-        error = e instanceof Error ? e.message : String(e);
+        error = message(e);
       }
     } finally {
-      phase = 'idle';
-      fraction = null;
+      if (controller === job) {
+        controller = null;
+        phase = 'idle';
+        fraction = null;
+      }
     }
+  }
+
+  /** 停止：界面立即回到可操作状态；支持中止的工具会停下，其余工具的结果会被丢弃 */
+  function stop() {
+    controller?.abort();
+    controller = null;
+    phase = 'idle';
+    fraction = null;
+  }
+
+  // 在单行输入框里按回车直接开始（输入法组字时的回车不算）
+  function onkeydown(event: KeyboardEvent) {
+    const target = event.target;
+    if (event.key !== 'Enter' || event.isComposing || !(target instanceof HTMLInputElement)) return;
+    if (['checkbox', 'radio', 'file', 'button', 'submit', 'range', 'color'].includes(target.type)) return;
+    event.preventDefault();
+    void run();
   }
 
   function reset() {
@@ -99,7 +158,8 @@
 <div class="grid gap-5 {stacked ? '' : 'lg:grid-cols-[minmax(0,1fr)_340px]'}">
   <div class="min-w-0">{@render input()}</div>
 
-  <aside class="{stacked ? '' : 'lg:sticky lg:top-20 lg:self-start'}">
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <aside class="{stacked ? '' : 'lg:sticky lg:top-20 lg:self-start'}" {onkeydown}>
     <div class="card p-4 sm:p-5">
       {#if options}
         <div class="space-y-4">{@render options()}</div>
@@ -108,7 +168,7 @@
       {#if pending >= 1_000_000 && phase !== 'download'}
         <p class="flex items-start gap-1.5 text-[12.5px] leading-snug text-muted {options ? 'mt-4' : ''}">
           <CloudDownload class="mt-px size-3.5 shrink-0" />
-          首次使用需下载{engines.label(needed)}，约 {bytes(pending)}，之后浏览器会缓存
+          首次使用需下载{engineLabel}，约 {bytes(pending)}，之后浏览器会缓存
         </p>
       {/if}
 
@@ -123,9 +183,12 @@
       {#if busy}
         <div class="mt-3 space-y-1.5" aria-live="polite">
           <ProgressBar value={fraction === null ? 100 : fraction * 100} active={fraction === null} />
-          <p class="text-[12.5px] text-muted">
-            {status}{fraction !== null ? ` ${Math.round(fraction * 100)}%` : ''}
-          </p>
+          <div class="flex items-center gap-2">
+            <p class="min-w-0 flex-1 text-[12.5px] text-muted">
+              {status}{fraction !== null ? ` ${Math.round(fraction * 100)}%` : ''}
+            </p>
+            <button class="btn btn-ghost btn-sm -mr-1.5 shrink-0" onclick={stop}><X class="size-3.5" /> 停止</button>
+          </div>
         </div>
       {/if}
 
