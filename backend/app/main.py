@@ -38,7 +38,8 @@ ISOLATION_HEADERS = [
 ]
 JOB_FILE = re.compile(r"^/api/jobs/[^/]+/files/")
 CACHE_IMMUTABLE = b"public, max-age=31536000, immutable"
-CACHE_REVALIDATE = b"no-cache"
+# no-transform：不让 Cloudflare 改写页面（例如自动注入第三方统计脚本，站点承诺不访问第三方），也不压缩缓冲 SSE
+CACHE_REVALIDATE = b"no-cache, no-transform"
 
 
 class GuardMiddleware:
