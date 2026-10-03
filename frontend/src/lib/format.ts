@@ -75,8 +75,11 @@ export function duration(seconds: number | null | undefined) {
 export function expiryLabel(ms: number) {
   if (ms <= 0) return '即将自动删除';
   const hours = ms / 3_600_000;
-  if (hours < 24) return `${Math.ceil(hours)} 小时后自动删除`;
-  return `${Math.ceil(hours / 24)} 天后自动删除`;
+  if (hours < 1) return '1 小时内自动删除';
+  // 临近删除时往少里说，免得用户以为还来得及
+  if (hours < 48) return `${Math.floor(hours)} 小时后自动删除`;
+  const days = hours / 24;
+  return `${days < 3 ? Math.floor(days) : Math.round(days)} 天后自动删除`;
 }
 
 export function elapsedSince(iso: string | null | undefined, now: number) {

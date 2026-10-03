@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api, fileUrl } from '../lib/api';
   import { confirm } from '../lib/confirm.svelte';
-  import { compact, duration, elapsedSince, expiryLabel, relativeTime, stageLabel } from '../lib/format';
+  import { compact, dateTime, duration, elapsedSince, expiryLabel, relativeTime, stageLabel } from '../lib/format';
   import {
     Ban,
     BookOpenText,
@@ -33,12 +33,14 @@
   });
   const DAY = 86_400_000;
   // 与后台清理一致：已结束的任务从结束时刻起算，清理每 30 分钟跑一次，过期未删的显示“即将删除”
-  const expiresIn = $derived.by(() => {
+  const expiresAt = $derived.by(() => {
     const days = session.meta?.file_retention_days;
     if (!days || job.files_purged || !job.finished_at) return null;
     if (!['succeeded', 'failed', 'canceled'].includes(job.status)) return null;
-    return new Date(job.finished_at).getTime() + days * DAY - now;
+    return new Date(job.finished_at).getTime() + days * DAY;
   });
+  const expiresIn = $derived(expiresAt === null ? null : expiresAt - now);
+  const expiryTitle = $derived(expiresAt === null ? '' : `将于 ${dateTime(new Date(expiresAt).toISOString())} 自动删除`);
   const tones = {
     queued: 'bg-surface-2 text-ink-2',
     running: 'bg-accent-soft text-accent',
@@ -171,7 +173,7 @@
           {#if job.tokens}<span>{compact(job.tokens)} tokens</span>{/if}
           {#if job.files_purged}<span>文件已超过保留期被清理</span>{/if}
           {#if expiresIn !== null}
-            <span class={expiresIn < 3 * DAY ? 'font-medium text-warn-ink' : ''} title="原文与译文到期后自动删除，请及时下载">{expiryLabel(expiresIn)}</span>
+            <span class={expiresIn < 3 * DAY ? 'font-medium text-warn-ink' : ''} title="{expiryTitle}，请及时下载">{expiryLabel(expiresIn)}</span>
           {/if}
         </p>
         {#if job.warning}
@@ -182,7 +184,7 @@
         {/if}
       {/if}
       {#if (job.status === 'failed' || job.status === 'canceled') && expiresIn !== null}
-        <p class="mt-2 text-[12.5px] {expiresIn < 3 * DAY ? 'text-warn-ink' : 'text-muted'}">原文 {expiryLabel(expiresIn)}，删除前可以重试</p>
+        <p class="mt-2 text-[12.5px] {expiresIn < 3 * DAY ? 'text-warn-ink' : 'text-muted'}" title={expiryTitle}>原文 {expiryLabel(expiresIn)}，删除前可以重试</p>
       {/if}
 
       <div class="mt-3.5 flex flex-wrap items-center justify-end gap-2">
