@@ -1,0 +1,9 @@
+[Unit]
+Description=BabelDOC Web - backup database and config (secret key excluded)
+After=babeldoc-web.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /opt/babeldoc-web/current/deploy/remote.sh backup
+Nice=10
+IOSchedulingClass=idle

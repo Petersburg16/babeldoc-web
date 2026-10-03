@@ -3,6 +3,8 @@
 #   bash /opt/babeldoc-web/current/deploy/remote.sh install <release>   安装并切换到指定版本
 #   bash /opt/babeldoc-web/current/deploy/remote.sh rollback            回到上一个版本
 #   bash /opt/babeldoc-web/current/deploy/remote.sh status | logs
+#   bash /opt/babeldoc-web/current/deploy/remote.sh backup | backups    立即备份 / 列出备份（每天也会自动备份）
+#   bash /opt/babeldoc-web/current/deploy/remote.sh restore <备份> [--yes]   校验备份；加 --yes 才真正恢复
 #   bash /opt/babeldoc-web/current/deploy/remote.sh cli create-admin <用户名>   （需 ssh -t）
 set -euo pipefail
 
@@ -12,6 +14,8 @@ SVC=babeldoc-web
 RUN_USER=babeldoc
 PORT=8090
 KEEP=5
+BACKUP_DIR=/var/backups/babeldoc-web
+BACKUP_KEEP=14
 
 UV="$(command -v uv || true)"
 [ -n "$UV" ] || UV=/root/.local/bin/uv
@@ -85,12 +89,19 @@ install_release() {
 
   warmup_assets "$rel"
 
-  if ! cmp -s "$rel/deploy/babeldoc-web.service" "/etc/systemd/system/$SVC.service"; then
+  local unit changed=""
+  for unit in "$SVC.service" "$SVC-backup.service" "$SVC-backup.timer"; do
+    if ! cmp -s "$rel/deploy/$unit" "/etc/systemd/system/$unit"; then
+      install -m 644 "$rel/deploy/$unit" "/etc/systemd/system/$unit"
+      changed=1
+    fi
+  done
+  if [ -n "$changed" ]; then
     log "更新 systemd 单元"
-    install -m 644 "$rel/deploy/babeldoc-web.service" "/etc/systemd/system/$SVC.service"
     systemctl daemon-reload
   fi
   systemctl enable "$SVC" >/dev/null 2>&1 || true
+  systemctl enable --now "$SVC-backup.timer" >/dev/null 2>&1 || true
 
   local previous=""
   [ -L "$APP/current" ] && previous="$(readlink -f "$APP/current")"
@@ -138,6 +149,91 @@ rollback() {
   health && log "服务正常" || die "回滚后服务未就绪，查看：journalctl -u $SVC -n 100"
 }
 
+# 快照与校验都以服务用户运行：以 root 打开 app.db 会让 WAL 的 -shm/-wal 归 root，服务就写不进去了
+DB_TOOL='
+import sqlite3, sys
+mode, db = sys.argv[1], sys.argv[2]
+if mode == "snapshot":
+    src, conn = sqlite3.connect(db), sqlite3.connect(sys.argv[3])
+    src.backup(conn)  # 在线备份 API：服务运行中也能得到一致快照，直接 cp 可能拿到半截事务
+    src.close()
+    conn.execute("pragma journal_mode=delete")
+else:
+    conn = sqlite3.connect(db)
+check = conn.execute("pragma integrity_check").fetchone()[0]
+counts = {t: conn.execute(f"select count(*) from {t}").fetchone()[0] for t in ("users", "model_profiles", "jobs")}
+note = ""
+if mode == "verify" and len(sys.argv) > 3:
+    # 备份不含 secret.key：看本机现有的密钥能解开多少个模型 Key
+    from cryptography.fernet import Fernet, InvalidToken
+    fernet = Fernet(open(sys.argv[3], "rb").read().strip())
+    tokens = [r[0] for r in conn.execute("select api_key_enc from model_profiles where length(api_key_enc) > 0")]
+    usable = 0
+    for token in tokens:
+        try:
+            fernet.decrypt(token.encode())
+            usable += 1
+        except InvalidToken:
+            pass
+    note = f" keys={usable}/{len(tokens)}"
+    if usable < len(tokens):
+        note += f"（{len(tokens) - usable} 个模型 Key 用本机 secret.key 解不开，恢复后要在后台重新填写）"
+conn.close()
+print(check, " ".join(f"{k}={v}" for k, v in counts.items()) + note)
+sys.exit(0 if check == "ok" else 1)
+'
+
+db_tool() {
+  runuser -u "$RUN_USER" -- env HOME="$DATA" "$APP/current/backend/.venv/bin/python" -c "$DB_TOOL" "$@"
+}
+
+backup() {
+  [ -s "$DATA/app.db" ] || die "找不到 $DATA/app.db"
+  install -d -m 700 "$BACKUP_DIR"
+  local tmp summary out
+  tmp="$(runuser -u "$RUN_USER" -- mktemp -d)"
+  summary="$(db_tool snapshot "$DATA/app.db" "$tmp/app.db")" || { rm -rf "$tmp"; die "数据库快照校验失败：$summary"; }
+  # 不放 secret.key：备份会被拉到别处保存，带上它就等于带上了能解出模型 API Key 的钥匙；丢了只需在后台重填 Key
+  cp -p "$APP/shared/env" "$tmp/env"
+  out="$BACKUP_DIR/$SVC-$(date +%Y%m%d-%H%M%S).tar.gz"
+  (umask 077 && tar -C "$tmp" -czf "$out" app.db env)
+  rm -rf "$tmp"
+  ls -1t "$BACKUP_DIR/$SVC"-*.tar.gz | tail -n +$((BACKUP_KEEP + 1)) | xargs -r rm -f
+  log "已备份 $out（$(du -h "$out" | cut -f1)；$summary）"
+}
+
+list_backups() {
+  ls -lh "$BACKUP_DIR/$SVC"-*.tar.gz 2>/dev/null || echo "还没有备份"
+  systemctl list-timers "$SVC-backup.timer" --no-pager 2>/dev/null | sed -n '1,2p'
+}
+
+restore() {
+  local archive="${1:-}" confirm="${2:-}"
+  [ -n "$archive" ] || die "用法：remote.sh restore <备份文件> [--yes]（不加 --yes 只校验）"
+  [ -f "$archive" ] || archive="$BACKUP_DIR/$archive"
+  [ -f "$archive" ] || die "找不到备份：$1"
+  local tmp summary
+  tmp="$(runuser -u "$RUN_USER" -- mktemp -d)"
+  tar -xzf "$archive" -C "$tmp" app.db
+  chown "$RUN_USER:$RUN_USER" "$tmp/app.db"
+  summary="$(db_tool verify "$tmp/app.db" "$DATA/secret.key")" || { rm -rf "$tmp"; die "备份里的数据库校验失败：$summary"; }
+  log "备份可用：$(basename "$archive")（$summary）"
+  if [ "$confirm" != "--yes" ]; then
+    rm -rf "$tmp"
+    log "只做了校验，没有改动任何数据；确认恢复请加 --yes（会先自动备份当前数据）"
+    return 0
+  fi
+  log "恢复前先备份当前数据"
+  backup
+  log "停止服务，替换数据库（secret.key 保持不动）"
+  systemctl stop "$SVC"
+  rm -f "$DATA/app.db-wal" "$DATA/app.db-shm"
+  install -o "$RUN_USER" -g "$RUN_USER" -m 644 "$tmp/app.db" "$DATA/app.db"
+  rm -rf "$tmp"
+  systemctl start "$SVC"
+  health && log "已恢复，服务正常" || die "恢复后服务未就绪，查看：journalctl -u $SVC -n 100"
+}
+
 run_cli() {
   set -a
   # shellcheck disable=SC1091
@@ -157,6 +253,9 @@ case "${1:-}" in
     curl -fsS -m 3 "http://127.0.0.1:$PORT/api/meta" | head -c 300 && echo
     ;;
   logs) journalctl -u "$SVC" -n "${2:-200}" --no-pager ;;
+  backup) backup ;;
+  backups) list_backups ;;
+  restore) restore "${2:-}" "${3:-}" ;;
   cli) shift && run_cli "$@" ;;
   *) sed -n '2,8p' "$0"; exit 1 ;;
 esac

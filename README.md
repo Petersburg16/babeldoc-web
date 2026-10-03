@@ -12,7 +12,7 @@ A self-hosted, multi-user web service for [BabelDOC](https://github.com/funstory
 | --- | --- | --- |
 | ![翻译页](docs/screenshots/home.png) | ![管理后台概览](docs/screenshots/admin-overview.png) | ![双语对照产出](docs/screenshots/output-dual.png) |
 
-截图中的用户、任务和用量都是本地模拟数据；第三张是 BabelDOC 的真实排版输出，但译文来自联调用的模拟模型（固定返回同一句话）。另有[深色模式](docs/screenshots/home-dark.png)、[手机端](docs/screenshots/mobile.png)和[模型管理](docs/screenshots/admin-models.png)截图。
+前两张截图里的用户、任务和用量是本地模拟数据；第三张是真实翻译结果（《Attention Is All You Need》第 1 页）。另有[深色模式](docs/screenshots/home-dark.png)、[手机端](docs/screenshots/mobile.png)和[模型管理](docs/screenshots/admin-models.png)截图。
 
 ## 为什么做这个
 
@@ -183,6 +183,7 @@ bash deploy/deploy.sh <ssh主机别名>
 | `/opt/babeldoc-web/shared/env` | 运行配置，首次安装时由 `deploy/env.example` 生成 |
 | `/opt/babeldoc-web/{python,uv-cache}` | uv 管理的 Python 与依赖缓存 |
 | `/var/lib/babeldoc-web` | 数据：`app.db`、`jobs/`、`secret.key`、BabelDOC 模型缓存 |
+| `/var/backups/babeldoc-web` | 每日备份，只有 root 可读 |
 
 常用命令（`R=/opt/babeldoc-web/current/deploy/remote.sh`）：
 
@@ -191,14 +192,33 @@ bash deploy/deploy.sh <ssh主机别名>
 | `ssh <别名> bash $R status` | 服务状态与当前版本 |
 | `ssh <别名> bash $R logs 300` | 最近 300 行日志 |
 | `ssh <别名> bash $R rollback` | 回到上一个版本 |
+| `ssh <别名> bash $R backup` | 立即备份 |
+| `ssh <别名> bash $R backups` | 列出备份和下一次自动备份的时间 |
+| `ssh <别名> bash $R restore <备份文件>` | 只校验备份，不改动数据；加 `--yes` 才真正恢复 |
 | `ssh -t <别名> bash $R cli reset-password <用户名>` | 重置密码 |
 | `ssh <别名> bash $R cli delete-user <用户名>` | 删除用户及其全部任务文件 |
 
 注意事项：
 
 - 服务以 `babeldoc` 系统用户运行，代码目录只读，只允许写数据目录。systemd 单元里设了 `MemoryMax=3500M`、`CPUWeight=50`，可以按机器配置修改 `deploy/babeldoc-web.service`。
-- 模型 API Key 用 `secret.key` 加密后存在 `app.db` 里，**备份时两者要一起备份**。丢了 `secret.key`，只能重新录入各个 Key。
 - 需要直接查库时用 `runuser -u babeldoc -- ...`，不要以 root 打开 `app.db`：root 创建的 WAL 文件会让服务写不进去。
+
+### 备份、恢复与迁移
+
+全部状态只有一个 SQLite 文件 `app.db`（账号、会话、邀请码、模型配置、任务记录、系统设置），外加加密模型 API Key 用的 `secret.key`。任务的原文与译文会按保留期自动删除，BabelDOC 的模型与字体可以重新下载，所以都不在备份范围内。
+
+- **自动备份**：部署时会装好 `babeldoc-web-backup.timer`，每天 04:30（服务器时区）用 SQLite 的在线备份接口导出一致的快照，连同运行配置打包到 `/var/backups/babeldoc-web`，保留最近 14 份。服务运行中备份也不影响使用。
+- **备份里没有 `secret.key`**：备份常被拉到别处保存，带上它就等于带上了能解出模型 API Key 的钥匙。代价只是：恢复到另一台服务器后，要在「管理后台 → 模型」把 Key 重新填一遍（库里的 Key 解不开时会显示为未填写）。
+- **拉回本地**：`bash deploy/pull-backup.sh [--new] [<别名>]` 把最新的备份下载到本地的 `backups/` 目录（已被 `.gitignore` 忽略），`--new` 表示先在服务器上做一次新备份。备份里仍有账号、邀请码等私人数据，请妥善保管。
+- **恢复**：`ssh <别名> bash $R restore <备份文件>` 先校验，并告诉你本机的 `secret.key` 能解开备份里几个模型 Key；确认后加 `--yes`。恢复前会自动再备份一次当前数据，然后停服务、替换数据库（`secret.key` 不动）、重启并做健康检查。
+- **迁移到新服务器**：
+  1. 新服务器装好 uv 和 curl；
+  2. `bash deploy/deploy.sh <新别名>`；
+  3. 把备份文件传到新服务器的 `/var/backups/babeldoc-web/`；
+  4. 执行 `remote.sh restore <备份文件> --yes`，再到后台把各模型的 API Key 重新填一遍；
+  5. 把隧道或反向代理指向新服务器，确认无误后停掉旧服务器上的服务。
+
+  需要连同未过期的任务文件一起搬，再用 rsync 复制 `/var/lib/babeldoc-web/jobs/`。
 
 ## 配置
 
