@@ -30,6 +30,18 @@ def test_login_logout_and_session(app, client):
     assert client.get("/api/auth/me").status_code == 401
 
 
+def test_cache_headers_for_spa_and_assets(tmp_path, monkeypatch):
+    config = build_config(tmp_path, monkeypatch)
+    (config.frontend_dir / "assets").mkdir(parents=True)
+    (config.frontend_dir / "index.html").write_text("<!doctype html><title>t</title>", encoding="utf-8")
+    (config.frontend_dir / "assets" / "index-abc123.js").write_text("console.log(1)", encoding="utf-8")
+    with TestClient(create_app(config)) as c:
+        assert c.get("/", headers={"Accept": "text/html"}).headers["cache-control"] == "no-cache"
+        assert "immutable" in c.get("/assets/index-abc123.js").headers["cache-control"]
+        assert c.get("/assets/missing.js").headers["cache-control"] == "no-cache"
+        assert c.get("/api/meta").headers["cache-control"] == "no-cache"
+
+
 def test_write_requests_need_csrf_header(app):
     with TestClient(app) as bare:
         resp = bare.post("/api/auth/login", json={"username": "x", "password": "y"})

@@ -27,10 +27,12 @@ SECURITY_HEADERS = [
     (b"referrer-policy", b"same-origin"),
     (b"x-frame-options", b"SAMEORIGIN"),
 ]
+CACHE_IMMUTABLE = b"public, max-age=31536000, immutable"
+CACHE_REVALIDATE = b"no-cache"
 
 
 class GuardMiddleware:
-    """写操作必须带 X-Requested-With（配合 SameSite=Lax 防 CSRF），并给所有响应补安全头。"""
+    """写操作必须带 X-Requested-With（配合 SameSite=Lax 防 CSRF），并给所有响应补安全头和缓存策略。"""
 
     def __init__(self, app: ASGIApp):
         self.app = app
@@ -47,8 +49,13 @@ class GuardMiddleware:
         async def send_with_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
                 existing = {name.lower() for name, _ in message.get("headers", [])}
-                message.setdefault("headers", [])
-                message["headers"] = [*message["headers"], *(h for h in SECURITY_HEADERS if h[0] not in existing)]
+                extra = [h for h in SECURITY_HEADERS if h[0] not in existing]
+                if b"cache-control" not in existing:
+                    # 构建产物文件名带内容哈希，可以长期缓存；其余（index.html、接口、下载）每次回源校验，
+                    # 否则浏览器按 Last-Modified 启发式缓存旧的 index.html，发版后几个小时还在用旧前端
+                    immutable = scope["path"].startswith("/assets/") and message.get("status") == 200
+                    extra.append((b"cache-control", CACHE_IMMUTABLE if immutable else CACHE_REVALIDATE))
+                message["headers"] = [*message.get("headers", []), *extra]
             await send(message)
 
         await self.app(scope, receive, send_with_headers)
