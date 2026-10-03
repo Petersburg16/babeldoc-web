@@ -87,7 +87,7 @@
       ]
     },
     "pymupdf": {
-      "label": "PyMuPDF 引擎",
+      "label": "PDF 解析引擎",
       "files": [
         {
           "path": "pyodide.js",
@@ -213,6 +213,51 @@
           "path": "ZhuqueFangsong-Regular.ttf",
           "url": "https://github.com/TrionesType/zhuque/releases/download/v0.212/ZhuqueFangsong-v0.212.zip",
           "member": "ZhuqueFangsong-Regular.ttf"
+        }
+      ]
+    },
+    "ghostscript": {
+      "label": "Ghostscript 引擎",
+      "files": [
+        {
+          "path": "gs.js",
+          "npm": "@bentopdf/gs-wasm",
+          "file": "assets/gs.js"
+        },
+        {
+          "path": "gs.wasm",
+          "npm": "@bentopdf/gs-wasm",
+          "file": "assets/gs.wasm"
+        }
+      ]
+    },
+    "libreoffice": {
+      "label": "LibreOffice 转换引擎",
+      "files": [
+        {
+          "path": "soffice.js",
+          "npm": "@matbee/libreoffice-converter",
+          "file": "wasm/soffice.js"
+        },
+        {
+          "path": "soffice.worker.js",
+          "npm": "@matbee/libreoffice-converter",
+          "file": "wasm/soffice.worker.js"
+        },
+        {
+          "path": "soffice.wasm",
+          "npm": "@matbee/libreoffice-converter",
+          "file": "wasm/soffice.wasm"
+        },
+        {
+          "path": "soffice.data",
+          "npm": "@matbee/libreoffice-converter",
+          "file": "wasm/soffice.data"
+        },
+        {
+          "path": "browser.worker.global.js",
+          "npm": "@matbee/libreoffice-converter",
+          "file": "dist/browser.worker.global.js"
         }
       ]
     }

@@ -10,6 +10,7 @@ export { default as FileSpreadsheet } from '@lucide/svelte/icons/file-spreadshee
 export { default as FileText } from '@lucide/svelte/icons/file-text';
 export { default as GripVertical } from '@lucide/svelte/icons/grip-vertical';
 export { default as Hash } from '@lucide/svelte/icons/hash';
+export { default as ImagePlus } from '@lucide/svelte/icons/image-plus';
 export { default as Images } from '@lucide/svelte/icons/images';
 export { default as LayoutGrid } from '@lucide/svelte/icons/layout-grid';
 export { default as Lock } from '@lucide/svelte/icons/lock';
@@ -21,3 +22,9 @@ export { default as ScanText } from '@lucide/svelte/icons/scan-text';
 export { default as Shrink } from '@lucide/svelte/icons/shrink';
 export { default as Split } from '@lucide/svelte/icons/split';
 export { default as Tags } from '@lucide/svelte/icons/tags';
+export { default as EyeOff } from '@lucide/svelte/icons/eye-off';
+export { default as ChevronLeft } from '@lucide/svelte/icons/chevron-left';
+export { default as ChevronRight } from '@lucide/svelte/icons/chevron-right';
+export { default as FilePlus } from '@lucide/svelte/icons/file-plus';
+export { default as Undo2 } from '@lucide/svelte/icons/undo-2';
+export { default as ArrowDownUp } from '@lucide/svelte/icons/arrow-down-up';

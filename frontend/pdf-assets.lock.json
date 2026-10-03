@@ -1598,7 +1598,7 @@
       }
     },
     "pymupdf": {
-      "label": "PyMuPDF 引擎",
+      "label": "PDF 解析引擎",
       "version": "8021a37ead82",
       "bytes": 29415990,
       "transfer": 22315562,
@@ -1807,12 +1807,92 @@
           "member": "ZhuqueFangsong-Regular.ttf"
         }
       }
+    },
+    "ghostscript": {
+      "label": "Ghostscript 引擎",
+      "version": "fd6b0350b1fc",
+      "bytes": 15571080,
+      "transfer": 10821191,
+      "files": {
+        "gs.js": {
+          "sha256": "5e7e3b3dfc7afc5e60de8dd6dab66145c75afb74f7d671f711f390b3bb69c6d0",
+          "bytes": 38034,
+          "gzip": 14129,
+          "br": 13713,
+          "npm": "@bentopdf/gs-wasm",
+          "file": "assets/gs.js"
+        },
+        "gs.wasm": {
+          "sha256": "c3373cd4a123f05b68513b57969db485d7f60f4b90145299de8c3182ea28f9b9",
+          "bytes": 15533046,
+          "gzip": 11076858,
+          "br": 10807478,
+          "npm": "@bentopdf/gs-wasm",
+          "file": "assets/gs.wasm"
+        }
+      }
+    },
+    "libreoffice": {
+      "label": "LibreOffice 转换引擎",
+      "version": "9a65dc552c09",
+      "bytes": 247709813,
+      "transfer": 57536611,
+      "files": {
+        "browser.worker.global.js": {
+          "sha256": "9401aff2213772d7114fe417e3f34eb359905ae3a4e94a735644d926d593e276",
+          "bytes": 110190,
+          "gzip": 24914,
+          "br": 23133,
+          "npm": "@matbee/libreoffice-converter",
+          "file": "dist/browser.worker.global.js"
+        },
+        "soffice.data": {
+          "sha256": "8f4e98aa67e108e161cecc7906d7ac0dd3941ef9347f999c3b9dbc049f165020",
+          "bytes": 99735918,
+          "gzip": 28387097,
+          "br": 18257247,
+          "npm": "@matbee/libreoffice-converter",
+          "file": "wasm/soffice.data"
+        },
+        "soffice.js": {
+          "sha256": "b67acadcb30171e6ec018754fcbe5b527443a3ef1c84f352e29aecff6d210e43",
+          "bytes": 444153,
+          "gzip": 87619,
+          "br": 81033,
+          "npm": "@matbee/libreoffice-converter",
+          "file": "wasm/soffice.js"
+        },
+        "soffice.wasm": {
+          "sha256": "ea3d8f3b69bd1e586a8ea973e0dfa61c758612fcc529dc94ac2e30519f8b4f7b",
+          "bytes": 147416331,
+          "gzip": 48535024,
+          "br": 39173917,
+          "npm": "@matbee/libreoffice-converter",
+          "file": "wasm/soffice.wasm"
+        },
+        "soffice.worker.js": {
+          "sha256": "458bc142e7f837baf44a2d186a0b65b0a11ece760e5dab79ebca2789c9feeef5",
+          "bytes": 3221,
+          "gzip": 1360,
+          "br": 1281,
+          "npm": "@matbee/libreoffice-converter",
+          "file": "wasm/soffice.worker.js"
+        }
+      }
     }
   },
   "npm": {
+    "@bentopdf/gs-wasm": {
+      "version": "0.1.1",
+      "integrity": "sha512-EAliG+AxKLf46lOoDreddjOQtyTZGekJ2KRUXjygMFeg8vimOX44QKpim+t3HGHn0eXKbtsItcdN7qcjMSiuYQ=="
+    },
     "@bentopdf/pymupdf-wasm": {
       "version": "0.11.16",
       "integrity": "sha512-GPxxH2BokrS49fJa17mrt3hTBGRIDlMkLfJwk+tk45+ICTmIzcti7ACXT2JHK3FUJX916OQvnrJQb29ZajN3CA=="
+    },
+    "@matbee/libreoffice-converter": {
+      "version": "2.7.2",
+      "integrity": "sha512-62S8uLiFvwbXiCu3IfkO1cDjTyZWUy5nlMsTrmj3l+G5zf5fQcgpvzfRDR9wId+bduarrv11ZDb8Olz5zj4zJA=="
     },
     "@neslinesli93/qpdf-wasm": {
       "version": "0.3.0",

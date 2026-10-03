@@ -156,7 +156,7 @@ export const TOOLS: ToolDef[] = [
     desc: '压缩图片、清理冗余对象，文字仍可选中和搜索',
     category: 'optimize',
     icon: Shrink,
-    engines: ['qpdf', 'pymupdf'],
+    engines: ['qpdf', 'ghostscript'],
     load: () => import('../../pages/pdf/tools/Compress.svelte'),
   },
   {
