@@ -1,0 +1,55 @@
+{
+  "TaskId": "e8adc0b3bc4b42d898fcadb0a1710635",
+  "Transcription": {
+    "AudioInfo": {
+      "Size": 670663,
+      "Duration": 14000,
+      "SampleRate": 16000,
+      "Language": "cn"
+    },
+    "Paragraphs": [
+      {
+        "ParagraphId": "16987422100275xxxxxx",
+        "SpeakerId": "1",
+        "Words": [
+          {"Id": 10, "SentenceId": 1, "Start": 4970, "End": 5560, "Text": "您好，"},
+          {"Id": 20, "SentenceId": 1, "Start": 5730, "End": 6176, "Text": "我是"},
+          {"Id": 30, "SentenceId": 1, "Start": 6176, "End": 6900, "Text": "张老师。"},
+          {"Id": 40, "SentenceId": 2, "Start": 7200, "End": 7600, "Text": "我们"},
+          {"Id": 50, "SentenceId": 2, "Start": 7600, "End": 7800, "Text": "用"},
+          {"Id": 60, "SentenceId": 2, "Start": 7800, "End": 8300, "Text": "Python"},
+          {"Id": 70, "SentenceId": 2, "Start": 8300, "End": 8500, "Text": "3"},
+          {"Id": 80, "SentenceId": 2, "Start": 8500, "End": 8800, "Text": "跑"},
+          {"Id": 90, "SentenceId": 2, "Start": 8800, "End": 9300, "Text": "一下。"}
+        ]
+      },
+      {
+        "ParagraphId": "16987422100276xxxxxx",
+        "SpeakerId": "2",
+        "Words": [
+          {"Id": 100, "SentenceId": 3, "Start": 9800, "End": 10200, "Text": "好的，"},
+          {"Id": 110, "SentenceId": 3, "Start": 10200, "End": 10900, "Text": "没问题。"},
+          {"Id": 120, "SentenceId": 4, "Start": 11000, "End": 11300, "Text": "Let's"},
+          {"Id": 130, "SentenceId": 4, "Start": 11300, "End": 11600, "Text": "see,"},
+          {"Id": 140, "SentenceId": 4, "Start": 11600, "End": 12000, "Text": "OK."}
+        ]
+      },
+      {
+        "ParagraphId": "16987422100277xxxxxx",
+        "SpeakerId": "1",
+        "Words": [
+          {"Id": 150, "SentenceId": 5, "Start": 12500, "End": 12600, "Text": " "},
+          {"Id": 160, "SentenceId": 6, "Start": 12700, "End": 13000, "Text": "下周"},
+          {"Id": 170, "SentenceId": 6, "Start": 13000, "End": 13200, "Text": "交"},
+          {"Id": 180, "SentenceId": 6, "Start": 13200, "End": 13500, "Text": "v2"},
+          {"Id": 190, "SentenceId": 6, "Start": 13500, "End": 13900, "Text": "版本。"}
+        ]
+      }
+    ],
+    "AudioSegments": [
+      [4970, 9300],
+      [9800, 12000],
+      [12500, 13900]
+    ]
+  }
+}

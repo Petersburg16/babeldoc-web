@@ -2,7 +2,9 @@
   import { onMount } from 'svelte';
   import Segmented from '../../components/Segmented.svelte';
   import { api } from '../../lib/api';
-  import { Gauge, Languages, LoaderCircle, Megaphone, Users } from '../../lib/icons';
+  import { AudioLines, Gauge, Languages, LoaderCircle, Megaphone, Users } from '../../lib/icons';
+  import { meetingApi } from '../../lib/meeting/api';
+  import type { MinutesTemplate } from '../../lib/meeting/types';
   import { session } from '../../lib/session.svelte';
   import { toast } from '../../lib/toast.svelte';
   import type { SystemSettings } from '../../lib/types';
@@ -10,11 +12,23 @@
   let form = $state<SystemSettings | null>(null);
   let saved = $state('');
   let saving = $state(false);
+  let templates = $state<MinutesTemplate[]>([]);
 
   const dirty = $derived(form !== null && JSON.stringify(form) !== saved);
   const languages = $derived(session.meta?.languages ?? []);
+  // 模板列表没拉到时也把当前值放进下拉框，否则 select 会显示空白、还会被当成改动
+  const templateOptions = $derived.by(() => {
+    const current = form?.default_meeting_template ?? '';
+    if (!current || templates.some((t) => t.id === current)) return templates;
+    return [{ id: current, name: current, description: '' }, ...templates];
+  });
+  const templateHint = $derived(templates.find((t) => t.id === form?.default_meeting_template)?.description ?? '');
 
   onMount(async () => {
+    meetingApi
+      .options()
+      .then((o) => (templates = o.templates))
+      .catch(() => {});
     try {
       const data = await api.admin.settings();
       form = data;
@@ -37,6 +51,10 @@
         max_active_jobs_per_user: Number(form.max_active_jobs_per_user),
         default_page_quota: Number(form.default_page_quota),
         file_retention_days: Number(form.file_retention_days),
+        public_base_url: form.public_base_url.trim(),
+        max_audio_upload_mb: Number(form.max_audio_upload_mb),
+        max_audio_hours: Number(form.max_audio_hours),
+        meeting_context_chars: Number(form.meeting_context_chars),
       });
       form = data;
       saved = JSON.stringify(data);
@@ -145,6 +163,49 @@
           </select>
         </div>
       </div>
+    </section>
+
+    <section class="card p-5">
+      <h2 class="flex items-center gap-2 text-[14.5px] font-semibold"><AudioLines class="size-4 text-accent" />会议记录</h2>
+      <div class="mt-4 grid gap-4 sm:grid-cols-3">
+        <div class="sm:col-span-2">
+          <label class="label" for="s-public">站点公网地址</label>
+          <input
+            id="s-public"
+            class="field font-mono"
+            inputmode="url"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength={200}
+            placeholder="https://example.com"
+            bind:value={form.public_base_url}
+          />
+          <p class="hint">识别服务从这个地址拉取录音。填站点对外访问的地址，只填协议和域名，不带路径。</p>
+        </div>
+        <div>
+          <label class="label" for="s-template">默认纪要模板</label>
+          <select id="s-template" class="field" bind:value={form.default_meeting_template}>
+            {#each templateOptions as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
+          </select>
+          {#if templateHint}<p class="hint">{templateHint}</p>{/if}
+        </div>
+        <div>
+          <label class="label" for="s-audio-mb">单个录音文件上限（MB）</label>
+          <input id="s-audio-mb" class="field" type="number" min="10" max="4096" bind:value={form.max_audio_upload_mb} />
+          <p class="hint">按上传的原文件计算，视频文件也算整个文件的大小</p>
+        </div>
+        <div>
+          <label class="label" for="s-audio-h">录音时长上限（小时）</label>
+          <input id="s-audio-h" class="field" type="number" min="1" max="6" bind:value={form.max_audio_hours} />
+          <p class="hint">1–6 小时；转码后超过上限的录音不会提交识别</p>
+        </div>
+        <div>
+          <label class="label" for="s-ctx">大模型上下文预算（字）</label>
+          <input id="s-ctx" class="field" type="number" min="10000" max="1000000" bind:value={form.meeting_context_chars} />
+          <p class="hint">逐字稿超过这个长度时，纪要分段生成、对话只附相关片段</p>
+        </div>
+      </div>
+      <p class="mt-4 text-[12px] text-muted">录音按上面的“文件保留天数”自动删除；逐字稿、纪要和对话保留到用户自己删除。</p>
     </section>
 
     <div class="sticky bottom-4 flex justify-end">

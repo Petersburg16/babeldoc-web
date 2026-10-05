@@ -24,6 +24,7 @@ export UV_CACHE_DIR="$APP/uv-cache"
 export UV_PYTHON_PREFERENCE=only-managed
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33m!!\033[0m %s\n' "$*" >&2; }
 die() { printf '\033[1;31m!!\033[0m %s\n' "$*" >&2; exit 1; }
 
 ensure_base() {
@@ -89,6 +90,10 @@ install_release() {
   local rel="$APP/releases/$name"
   [ -d "$rel" ] || die "找不到 $rel"
   ensure_base "$rel"
+  # 会议记录用 ffmpeg 转换录音格式；缺了只影响会议记录，不拦部署
+  if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+    warn "没找到 ffmpeg / ffprobe，会议记录无法处理录音（apt install ffmpeg）"
+  fi
 
   log "同步后端依赖"
   (cd "$rel/backend" && "$UV" sync --frozen --no-dev --compile-bytecode -q)
@@ -173,13 +178,17 @@ if mode == "snapshot":
 else:
     conn = sqlite3.connect(db)
 check = conn.execute("pragma integrity_check").fetchone()[0]
-counts = {t: conn.execute(f"select count(*) from {t}").fetchone()[0] for t in ("users", "model_profiles", "jobs")}
+tables = {r[0] for r in conn.execute("select name from sqlite_master where type = 'table'")}
+wanted = ("users", "model_profiles", "jobs", "meetings", "asr_providers")
+counts = {t: conn.execute(f"select count(*) from {t}").fetchone()[0] for t in wanted if t in tables}
 note = ""
 if mode == "verify" and len(sys.argv) > 3:
     # 备份不含 secret.key：看本机现有的密钥能解开多少个模型 Key
     from cryptography.fernet import Fernet, InvalidToken
     fernet = Fernet(open(sys.argv[3], "rb").read().strip())
     tokens = [r[0] for r in conn.execute("select api_key_enc from model_profiles where length(api_key_enc) > 0")]
+    if "asr_providers" in tables:  # 语音识别服务的密钥同样用 secret.key 加密
+        tokens += [r[0] for r in conn.execute("select secret_enc from asr_providers where length(secret_enc) > 0")]
     usable = 0
     for token in tokens:
         try:
@@ -189,7 +198,7 @@ if mode == "verify" and len(sys.argv) > 3:
             pass
     note = f" keys={usable}/{len(tokens)}"
     if usable < len(tokens):
-        note += f"（{len(tokens) - usable} 个模型 Key 用本机 secret.key 解不开，恢复后要在后台重新填写）"
+        note += f"（{len(tokens) - usable} 个密钥用本机 secret.key 解不开，恢复后要在后台重新填写）"
 conn.close()
 print(check, " ".join(f"{k}={v}" for k, v in counts.items()) + note)
 sys.exit(0 if check == "ok" else 1)

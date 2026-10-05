@@ -161,6 +161,8 @@ export interface AdminUser {
   total_jobs: number;
   created_at: string;
   last_login_at: string | null;
+  /** 本月会议录音的识别时长（秒） */
+  month_audio_seconds: number;
 }
 
 export interface SystemSettings {
@@ -176,6 +178,12 @@ export interface SystemSettings {
   default_lang_in: string;
   default_lang_out: string;
   watermark_mode: 'no_watermark' | 'watermarked' | 'both';
+  /** 会议记录：识别服务从这个地址拉取录音，只有协议和域名 */
+  public_base_url: string;
+  max_audio_upload_mb: number;
+  max_audio_hours: number;
+  meeting_context_chars: number;
+  default_meeting_template: string;
 }
 
 export interface DailyPoint {

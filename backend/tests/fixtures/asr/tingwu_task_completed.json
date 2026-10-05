@@ -1,0 +1,14 @@
+{
+  "RequestId": "35124E1C-AE99-5D6C-A52E-BD689D8D****",
+  "Code": 0,
+  "Message": "Success.",
+  "Data": {
+    "TaskId": "e8adc0b3bc4b42d898fcadb0a1710635",
+    "TaskKey": "task_tingwu_123",
+    "TaskStatus": "COMPLETED",
+    "OutputMp3Path": "http://speech-swap.oss-cn-zhangjiakou.aliyuncs.com/tingwu/output/audio.mp3",
+    "Result": {
+      "Transcription": "http://speech-swap.oss-cn-zhangjiakou.aliyuncs.com/tingwu/output/transcription.json"
+    }
+  }
+}

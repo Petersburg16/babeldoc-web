@@ -1,0 +1,23 @@
+{
+  "request_id": "7bac899c-06ec-4a79-8875-request0000",
+  "output": {
+    "task_id": "7bac899c-06ec-4a79-8875-xxxxxxxxxxxx",
+    "task_status": "SUCCEEDED",
+    "submit_time": "2024-12-16 16:30:59.170",
+    "scheduled_time": "2024-12-16 16:30:59.204",
+    "end_time": "2024-12-16 16:31:02.375",
+    "results": [
+      {
+        "file_url": "{YOUR_AUDIO_URL}",
+        "code": "FILE_DOWNLOAD_FAILED",
+        "message": "FILE_DOWNLOAD_FAILED",
+        "subtask_status": "FAILED"
+      }
+    ],
+    "task_metrics": {
+      "TOTAL": 1,
+      "SUCCEEDED": 0,
+      "FAILED": 1
+    }
+  }
+}

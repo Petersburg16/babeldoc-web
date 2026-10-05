@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { Bot, Gauge, ScrollText, Settings, Ticket, Users } from '../../lib/icons';
+  import { AudioWaveform, BookA, Bot, Gauge, ScrollText, Settings, Ticket, Users } from '../../lib/icons';
   import { router } from '../../lib/router.svelte';
+  import AsrProviders from './AsrProviders.svelte';
+  import Glossary from './Glossary.svelte';
   import Invites from './Invites.svelte';
   import Jobs from './Jobs.svelte';
   import Models from './Models.svelte';
@@ -14,6 +16,8 @@
     { path: '/admin/users', label: '用户', icon: Users, page: UsersPage },
     { path: '/admin/invites', label: '邀请码', icon: Ticket, page: Invites },
     { path: '/admin/models', label: '模型', icon: Bot, page: Models },
+    { path: '/admin/asr', label: '语音识别', icon: AudioWaveform, page: AsrProviders },
+    { path: '/admin/glossary', label: '术语表', icon: BookA, page: Glossary },
     { path: '/admin/settings', label: '系统设置', icon: Settings, page: SettingsPage },
   ];
 

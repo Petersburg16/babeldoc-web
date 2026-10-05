@@ -1,0 +1,25 @@
+{
+  "request_id": "f9e1afad-94d3-997e-a83b-************",
+  "output": {
+    "task_id": "f86ec806-4d73-485f-a24f-************",
+    "task_status": "SUCCEEDED",
+    "submit_time": "2024-09-12 15:11:40.041",
+    "scheduled_time": "2024-09-12 15:11:40.071",
+    "end_time": "2024-09-12 15:11:40.903",
+    "results": [
+      {
+        "file_url": "{YOUR_AUDIO_URL}",
+        "transcription_url": "https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/pre/filetrans-16k/20240912/15%3A11/409a4b92-445b-4dd8-8c1d-f110954d82d8-1.json?Expires=1726211500&OSSAccessKeyId=YOUR_ACCESS_KEY_ID&Signature=YOUR_SIGNATURE",
+        "subtask_status": "SUCCEEDED"
+      }
+    ],
+    "task_metrics": {
+      "TOTAL": 1,
+      "SUCCEEDED": 1,
+      "FAILED": 0
+    }
+  },
+  "usage": {
+    "duration": 9
+  }
+}

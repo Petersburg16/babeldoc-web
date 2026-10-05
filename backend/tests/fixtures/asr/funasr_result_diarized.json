@@ -1,0 +1,46 @@
+{
+  "file_url": "{YOUR_AUDIO_URL}",
+  "properties": {
+    "audio_format": "mp3",
+    "channels": [0],
+    "original_sampling_rate": 16000,
+    "original_duration_in_milliseconds": 21500
+  },
+  "transcripts": [
+    {
+      "channel_id": 0,
+      "content_duration_in_milliseconds": 19800,
+      "text": "大家好，今天先过一下进度。我这周把风场数据重新清洗了一遍。好，下周把对比图发给我。",
+      "sentences": [
+        {
+          "begin_time": 300,
+          "end_time": 4100,
+          "text": "大家好，今天先过一下进度。",
+          "sentence_id": 1,
+          "speaker_id": 0
+        },
+        {
+          "begin_time": 4600,
+          "end_time": 11250,
+          "text": "我这周把风场数据重新清洗了一遍。",
+          "sentence_id": 2,
+          "speaker_id": 1
+        },
+        {
+          "begin_time": 11800,
+          "end_time": 12100,
+          "text": "",
+          "sentence_id": 3,
+          "speaker_id": 1
+        },
+        {
+          "begin_time": 12500,
+          "end_time": 20900,
+          "text": "好，下周把对比图发给我。",
+          "sentence_id": 4,
+          "speaker_id": 0
+        }
+      ]
+    }
+  ]
+}

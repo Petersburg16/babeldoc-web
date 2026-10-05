@@ -5,6 +5,7 @@
   import { api } from '../../lib/api';
   import { confirm } from '../../lib/confirm.svelte';
   import { copyText, dateTime, relativeTime } from '../../lib/format';
+  import { spoken } from '../../lib/meeting/format';
   import { Copy, KeyRound, LoaderCircle, Pencil, Plus, Trash2 } from '../../lib/icons';
   import { session } from '../../lib/session.svelte';
   import { toast } from '../../lib/toast.svelte';
@@ -149,9 +150,12 @@
   </div>
 
   <div class="card overflow-x-auto">
-    <table class="table min-w-[820px]">
+    <table class="table min-w-[920px]">
       <thead>
-        <tr><th>用户</th><th>角色</th><th>本月页数</th><th class="text-right">任务</th><th>最近登录</th><th>注册时间</th><th class="text-right">操作</th></tr>
+        <tr>
+          <th>用户</th><th>角色</th><th>本月页数</th><th>本月识别</th><th class="text-right">任务</th><th>最近登录</th><th>注册时间</th>
+          <th class="text-right">操作</th>
+        </tr>
       </thead>
       <tbody>
         {#each users as user (user.id)}
@@ -189,6 +193,9 @@
                 </div>
               {/if}
             </td>
+            <td class="tabular whitespace-nowrap text-[12.5px]">
+              {#if user.month_audio_seconds}{spoken(user.month_audio_seconds * 1000)}{:else}<span class="text-muted">—</span>{/if}
+            </td>
             <td class="tabular text-right">{user.total_jobs}</td>
             <td class="whitespace-nowrap text-ink-2">{user.last_login_at ? relativeTime(user.last_login_at) : '从未'}</td>
             <td class="whitespace-nowrap text-ink-2">{dateTime(user.created_at)}</td>
@@ -203,7 +210,7 @@
             </td>
           </tr>
         {:else}
-          <tr><td colspan="7" class="py-12 text-center text-muted">{loading ? '加载中…' : '还没有用户'}</td></tr>
+          <tr><td colspan="8" class="py-12 text-center text-muted">{loading ? '加载中…' : '还没有用户'}</td></tr>
         {/each}
       </tbody>
     </table>

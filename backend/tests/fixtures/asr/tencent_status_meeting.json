@@ -1,0 +1,80 @@
+{
+    "Response": {
+        "RequestId": "3c1f9a2e-7b44-4c0e-9d1a-5f0b6e2d8a11",
+        "Data": {
+            "TaskId": 4500055927,
+            "Status": 2,
+            "StatusStr": "success",
+            "AudioDuration": 21.6,
+            "Result": "[0:0.480,0:5.120,0]  大家好，今天我们过一下进展。\n[0:5.900,0:11.300,1]  我先说，风场数据已经重新清洗了一遍。\n[0:12.000,0:15.200,0]  好的。\n[0:16.100,0:21.400,2]  模型误差比上次低了 8%。\n",
+            "ResultDetail": [
+                {
+                    "FinalSentence": "大家好，今天我们过一下进展。",
+                    "SliceSentence": "大家 好 今天 我们 过 一下 进展",
+                    "StartMs": 480,
+                    "EndMs": 5120,
+                    "SpeechSpeed": 3.2,
+                    "WordsNum": 7,
+                    "EmotionalEnergy": 0,
+                    "SpeakerId": 0,
+                    "SilenceTime": 480,
+                    "EmotionType": ["neutral"],
+                    "Words": []
+                },
+                {
+                    "FinalSentence": "我先说，风场数据已经重新清洗了一遍。",
+                    "SliceSentence": "我 先 说 风场 数据 已经 重新 清洗 了 一遍",
+                    "StartMs": 5900,
+                    "EndMs": 11300,
+                    "SpeechSpeed": 3.1,
+                    "WordsNum": 10,
+                    "EmotionalEnergy": 0,
+                    "SpeakerId": 1,
+                    "SilenceTime": 780,
+                    "EmotionType": ["neutral"],
+                    "Words": []
+                },
+                {
+                    "FinalSentence": "好的。",
+                    "SliceSentence": "好的",
+                    "StartMs": 12000,
+                    "EndMs": 15200,
+                    "SpeechSpeed": 0.6,
+                    "WordsNum": 1,
+                    "EmotionalEnergy": 0,
+                    "SpeakerId": 0,
+                    "SilenceTime": 700,
+                    "EmotionType": ["neutral"],
+                    "Words": []
+                },
+                {
+                    "FinalSentence": "  ",
+                    "SliceSentence": "",
+                    "StartMs": 15300,
+                    "EndMs": 15900,
+                    "SpeechSpeed": 0,
+                    "WordsNum": 0,
+                    "EmotionalEnergy": 0,
+                    "SpeakerId": 1,
+                    "SilenceTime": 100,
+                    "EmotionType": [],
+                    "Words": []
+                },
+                {
+                    "FinalSentence": "模型误差比上次低了 8%。",
+                    "SliceSentence": "模型 误差 比 上次 低 了 8%",
+                    "StartMs": 16100,
+                    "EndMs": 21400,
+                    "SpeechSpeed": 2.5,
+                    "WordsNum": 7,
+                    "EmotionalEnergy": 0,
+                    "SpeakerId": 2,
+                    "SilenceTime": 200,
+                    "EmotionType": ["neutral"],
+                    "Words": []
+                }
+            ],
+            "ErrorMsg": ""
+        }
+    }
+}

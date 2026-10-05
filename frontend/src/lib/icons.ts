@@ -1,6 +1,8 @@
 export { default as ArrowLeftRight } from '@lucide/svelte/icons/arrow-left-right';
 export { default as AudioLines } from '@lucide/svelte/icons/audio-lines';
+export { default as AudioWaveform } from '@lucide/svelte/icons/audio-waveform';
 export { default as Ban } from '@lucide/svelte/icons/ban';
+export { default as BookA } from '@lucide/svelte/icons/book-a';
 export { default as BookOpenText } from '@lucide/svelte/icons/book-open-text';
 export { default as Bot } from '@lucide/svelte/icons/bot';
 export { default as ChartColumn } from '@lucide/svelte/icons/chart-column';
@@ -18,6 +20,7 @@ export { default as Eye } from '@lucide/svelte/icons/eye';
 export { default as FileCog } from '@lucide/svelte/icons/file-cog';
 export { default as FileText } from '@lucide/svelte/icons/file-text';
 export { default as FileUp } from '@lucide/svelte/icons/file-up';
+export { default as FlaskConical } from '@lucide/svelte/icons/flask-conical';
 export { default as Gauge } from '@lucide/svelte/icons/gauge';
 export { default as HardDrive } from '@lucide/svelte/icons/hard-drive';
 export { default as Info } from '@lucide/svelte/icons/info';
