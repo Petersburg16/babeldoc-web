@@ -42,6 +42,7 @@
   const DAY = 86_400_000;
 
   let notFound = $state(false);
+  let everLoaded = $state(false);
   let loadError = $state('');
   let busy = $state(false);
   let editingTitle = $state(false);
@@ -93,6 +94,7 @@
     loadError = '';
     try {
       await meetings.openDetail(id);
+      everLoaded = true;
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) notFound = true;
       else loadError = e instanceof Error ? e.message : String(e);
@@ -291,7 +293,7 @@
     <ArrowLeft class="size-3.5" /> 全部会议
   </a>
 
-  {#if notFound}
+  {#if notFound || (everLoaded && !meeting)}
     <div class="flex flex-col items-center py-24 text-center">
       <Compass class="size-10 text-line-strong" strokeWidth={1.5} />
       <p class="mt-4 font-medium">会议不存在</p>
@@ -376,7 +378,11 @@
             <span class="tabular ml-auto font-semibold text-ink">{Math.floor(upload.ratio * 100)}%</span>
           </div>
           <div class="mt-3 flex justify-end">
-            <button class="btn btn-secondary btn-sm" disabled={upload.canceling} onclick={() => upload.cancel()}>
+            <button
+              class="btn btn-secondary btn-sm"
+              disabled={upload.canceling || upload.ratio >= 1}
+              onclick={() => upload.cancel()}
+            >
               <Ban class="size-3.5" /> 取消上传
             </button>
           </div>

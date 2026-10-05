@@ -49,6 +49,8 @@ POLL_TIMEOUT = timedelta(hours=8)
 MAX_TRANSIENT = 6  # 网络或服务端临时错误连续重试的次数
 PROBE_TIMEOUT = 240
 PROBE_ID = "probe"
+# ffprobe 认出这些格式时拒绝：播放列表、拼接列表等会让 ffmpeg 去读服务器上的其他文件
+UNSAFE_FORMATS = {"hls", "concat", "image2", "tty", "lavfi", "ffmetadata", "sdp", "rtp", "rtsp", "applehttp", "data"}
 # 进度区间：转码 0–10，识别 10–60，大模型 60–100
 TRANSCODE_SPAN = (0.0, 10.0)
 ASR_SPAN = (10.0, 60.0)
@@ -151,7 +153,7 @@ class MeetingManager:
                         m.transcript_state = "partial"
                     if m.minutes_state == "generating":
                         m.minutes_state = "failed"
-                    m.warning = _join(m.warning, "服务重启打断了正在进行的处理，请重新操作")
+                    set_warning(m, "restart", "服务重启打断了正在进行的处理，请重新操作")
                 if m.status == "done":
                     continue
                 if m.status == "transcoding":
@@ -254,7 +256,6 @@ class MeetingManager:
         except asyncio.CancelledError:
             if meeting_id in self.cancel_requested and meeting_id not in self.discard_requested:
                 self._update(meeting_id, status="canceled", finished_at=utcnow(), stage="")
-                self._invalidate_tokens(meeting_id)
             raise
         except StageError as e:
             self._fail(meeting_id, e.message, e.kind)
@@ -286,7 +287,6 @@ class MeetingManager:
 
     def _fail(self, meeting_id: str, message: str, kind: str) -> None:
         self._update(meeting_id, status="failed", error=message[:2000], error_kind=kind, finished_at=utcnow())
-        self._invalidate_tokens(meeting_id)
         log.warning("meeting %s failed (%s): %s", meeting_id, kind, message)
 
     # ---------- 转码 ----------
@@ -317,6 +317,8 @@ class MeetingManager:
             raise StageError(str(e), "input") from e
         if not info.has_audio:
             raise StageError("这个文件里没有音频", "input")
+        if any(name in UNSAFE_FORMATS for name in info.format_name.split(",")):
+            raise StageError("不支持这种文件格式，请上传普通的音频或视频文件", "input")
         limit_ms = settings.max_audio_hours * 3600 * 1000
         if info.duration_ms > limit_ms + 60_000:
             raise StageError(f"录音时长 {_clock(info.duration_ms)} 超过了上限 {settings.max_audio_hours} 小时", "input")
@@ -328,10 +330,19 @@ class MeetingManager:
             except MediaError as e:
                 raise StageError(str(e), "internal") from e
             self.ffmpeg[meeting_id] = proc
+            # 正常转码远快于实时；卡住的 ffmpeg 不能一直占着全站唯一的转码名额
+            limit_s = max(600.0, info.duration_ms / 1000 * 0.5 + 300)
             try:
-                code = await proc.wait(
-                    info.duration_ms, lambda r: self._progress(meeting_id, _span(TRANSCODE_SPAN, r), "transcode")
+                code = await asyncio.wait_for(
+                    proc.wait(
+                        info.duration_ms,
+                        lambda r: self._progress(meeting_id, _span(TRANSCODE_SPAN, r), "transcode"),
+                    ),
+                    timeout=limit_s,
                 )
+            except TimeoutError as e:
+                proc.kill()
+                raise StageError(f"转码超过 {int(limit_s // 60)} 分钟仍未完成，文件可能有问题", "input") from e
             finally:
                 self.ffmpeg.pop(meeting_id, None)
                 proc.close()
@@ -346,6 +357,11 @@ class MeetingManager:
         duration = out_info.duration_ms or info.duration_ms
         if duration <= 0:
             raise StageError("读不出录音时长，文件可能已损坏", "input")
+        if duration > limit_ms + 60_000:
+            # 有的文件头里写的时长不准（如没有 Xing 头的 VBR MP3），转码后的时长才可靠
+            with contextlib.suppress(OSError):
+                audio.unlink()
+            raise StageError(f"录音时长 {_clock(duration)} 超过了上限 {settings.max_audio_hours} 小时", "input")
         parts = await self._plan_parts(meeting_id, audio, duration, provider_kind, provider_name)
         self._update(
             meeting_id,
@@ -460,8 +476,7 @@ class MeetingManager:
             m.status = "processing"
             m.stage = "speakers"
             m.progress = ASR_SPAN[1]
-            if notes:
-                m.warning = _join(m.warning, "；".join(notes))
+            set_warning(m, "asr", "；".join(notes) if notes else None)
             src = self.meeting_dir(m.id) / source_name(m.filename)
             db.commit()
         # 识别成功后原件和切段文件就用不到了（回听用转好的 audio.mp3），WAV 原件可能上 GB
@@ -483,9 +498,20 @@ class MeetingManager:
     ) -> None:
         part = self._part(meeting_id, index)
         raw_name = f"asr-{index}.json"
-        if part.get("state") == "done" and (self.meeting_dir(meeting_id) / raw_name).is_file():
+        if (self.meeting_dir(meeting_id) / raw_name).is_file():
+            # 结果已经落盘（可能是写完后、改状态前被打断）：不必再查
+            if part.get("state") != "done":
+                self._update_part(meeting_id, index, state="done", raw=raw_name, error=None)
+            on_progress(1.0)
             return
         task_id = part.get("task_id")
+        if not task_id and part.get("state") == "submitting":
+            # 上次正在提交时服务中断：服务商可能已经建好任务，自动重提有重复计费的风险，交给用户决定
+            self._update_part(meeting_id, index, state="failed", final=True, error="提交时服务中断")
+            raise StageError(
+                "上次提交识别时服务中断，服务商可能已经收到任务；为免重复计费没有自动重新提交，确认后请点重试",
+                "provider",
+            )
         if not task_id:
             token = secrets.token_urlsafe(32)
             self._update_part(
@@ -495,9 +521,12 @@ class MeetingManager:
             try:
                 task_id = await self._submit(lambda: adapter.submit(url, opts))
             except AsrError as e:
-                self._update_part(meeting_id, index, state="failed", error=str(e))
+                # 提交被拒或不确定是否送达：没有任务号可续查，重试时只能重新提交
+                self._update_part(meeting_id, index, state="failed", final=True, error=str(e))
                 raise StageError(f"提交识别失败：{e}", _kind(e.kind)) from e
-            self._update_part(meeting_id, index, state="submitted", task_id=task_id, submitted_at=_iso(utcnow()))
+            self._update_part(
+                meeting_id, index, state="submitted", task_id=task_id, submitted_at=_iso(utcnow()), final=False
+            )
             self.publish(meeting_id)
         else:
             # 重启后续查：服务商可能还要来拉音频，令牌过期就顺延（地址已经交给服务商了，不能换）
@@ -507,6 +536,11 @@ class MeetingManager:
             if part.get("state") != "submitted":
                 self._update_part(meeting_id, index, state="submitted")
         submitted = _parse_iso(self._part(meeting_id, index).get("submitted_at")) or utcnow()
+        ttl = timedelta(hours=adapter.task_ttl_hours) if adapter.task_ttl_hours else POLL_TIMEOUT
+        if utcnow() - submitted > min(ttl, POLL_TIMEOUT):
+            # 先判断再查询：过期的任务号在有的服务商那里会被复用，查到的可能是别人的结果
+            self._update_part(meeting_id, index, state="failed", final=True, error="任务已过期")
+            raise StageError("服务商那边的识别任务已过期，请点重试重新识别", "provider")
         low, high = adapter.poll_interval
         delay = low
         transient = 0
@@ -523,7 +557,8 @@ class MeetingManager:
                     await asyncio.sleep(min(high, low * 2**transient))
                     continue
                 kind = e.kind if isinstance(e, AsrError) else "network"
-                self._update_part(meeting_id, index, state="failed", error=str(e))
+                # input 类（例如结果地址失效）说明这个任务的结果拿不回来了；其余（断网、鉴权）重试时续查同一个任务
+                self._update_part(meeting_id, index, state="failed", final=kind == "input", error=str(e))
                 raise StageError(f"查询识别结果失败：{e}", _kind(kind)) from e
             if result.state == "done":
                 path = self.meeting_dir(meeting_id) / raw_name
@@ -533,7 +568,7 @@ class MeetingManager:
                 on_progress(1.0)
                 return
             if result.state == "failed":
-                self._update_part(meeting_id, index, state="failed", error=result.error)
+                self._update_part(meeting_id, index, state="failed", final=True, error=result.error)
                 raise StageError(f"识别失败：{result.error or '服务商没有给出原因'}", _kind(result.error_kind))
             if result.progress is not None:
                 on_progress(max(0.0, min(0.99, result.progress)))
@@ -541,9 +576,9 @@ class MeetingManager:
                 # 服务商不报进度时按经验估一个（实际处理通常远快于音频时长），封顶 95%
                 elapsed_ms = (time.monotonic() - started) * 1000
                 on_progress(min(0.95, elapsed_ms / (expected_ms * 0.15 + 30_000)))
-            if utcnow() - submitted > POLL_TIMEOUT:
-                self._update_part(meeting_id, index, state="failed", error="超时")
-                raise StageError("识别超时：提交 8 小时后服务商仍未返回结果", "provider")
+            if utcnow() - submitted > min(ttl, POLL_TIMEOUT):
+                self._update_part(meeting_id, index, state="failed", final=True, error="超时")
+                raise StageError("识别超时：服务商长时间没有返回结果", "provider")
             await asyncio.sleep(delay)
             delay = min(high, delay * 1.5)
 
@@ -581,7 +616,8 @@ class MeetingManager:
     ) -> None:
         with self.Session() as db:
             m = db.get(Meeting, meeting_id)
-            assert m is not None
+            if m is None or m.deleted_at is not None:
+                return
             db.execute(delete(MeetingSegment).where(MeetingSegment.meeting_id == meeting_id))
             speakers: dict[str, Any] = {}
             for i, seg in enumerate(merged):
@@ -613,7 +649,7 @@ class MeetingManager:
         self._progress(meeting_id, ASR_SPAN[1], "speakers")
         assert self.llm_sem is not None
         async with self.llm_sem:
-            warning = await processing.run_pipeline(self, meeting_id)
+            warnings = await processing.run_pipeline_steps(self, meeting_id)
         with self.Session() as db:
             m = db.get(Meeting, meeting_id)
             assert m is not None
@@ -621,8 +657,8 @@ class MeetingManager:
             m.stage = ""
             m.progress = 100
             m.finished_at = utcnow()
-            if warning:
-                m.warning = _join(m.warning, warning)
+            for key, text in warnings.items():
+                set_warning(m, key, text)
             db.commit()
 
     def request_op(self, meeting_id: str, op: str, params: dict[str, Any]) -> None:
@@ -636,6 +672,13 @@ class MeetingManager:
 
     async def _run_op(self, meeting_id: str, op: str, params: dict[str, Any]) -> None:
         warning: str | None = None
+        with self.Session() as db:
+            m = db.get(Meeting, meeting_id)
+            if m is not None:
+                # 重跑开始：清掉这一步和“被打断”“跳过了”这类旧提示，结束后按结果重新写
+                for key in (op, "restart", "pipeline"):
+                    set_warning(m, key, None)
+                db.commit()
         try:
             assert self.llm_sem is not None
             async with self.llm_sem:
@@ -657,8 +700,7 @@ class MeetingManager:
                     m = db.get(Meeting, meeting_id)
                     if m is not None:
                         m.op = None
-                        if warning:
-                            m.warning = _join(m.warning, warning)
+                        set_warning(m, op, warning)
                         db.commit()
                 self.publish(meeting_id)
 
@@ -785,6 +827,16 @@ class MeetingManager:
                     m.audio_purged = True
                     expired.append(m.id)
             db.commit()
+        orphans: list[Path] = []
+        if self.config.meetings_dir.is_dir():
+            with self.Session() as db:
+                alive = set(db.scalars(select(Meeting.id).where(Meeting.deleted_at.is_(None))).all())
+            for directory in self.config.meetings_dir.iterdir():
+                if directory.is_dir() and not directory.name.startswith("_") and directory.name not in alive:
+                    orphans.append(directory)
+        for directory in orphans:
+            if directory.name not in self.tasks and directory.name not in self.op_tasks:
+                shutil.rmtree(directory, ignore_errors=True)
         for meeting_id, user_id in stale_uploads:
             self.remove_files(meeting_id)
             self.bus.publish(user_id, {"type": "meeting_removed", "id": meeting_id})
@@ -914,6 +966,7 @@ def _new_part(index: int, offset_ms: int, duration_ms: int, file: str) -> dict[s
         "submitted_at": None,
         "raw": None,
         "error": None,
+        "final": False,
     }
 
 
@@ -925,12 +978,15 @@ def _kind(kind: str) -> str:
     return {"network": "provider"}.get(kind, kind)
 
 
-def _join(existing: str | None, extra: str) -> str:
-    if not existing:
-        return extra
-    if extra in existing:
-        return existing
-    return f"{existing}\n{extra}"
+def set_warning(m: Meeting, key: str, text: str | None) -> None:
+    """按来源写警告（text 为空表示清掉这一条），同时更新给界面显示的 warning 文字。"""
+    warnings = {k: v for k, v in (m.warnings or {}).items() if v}
+    if text:
+        warnings[key] = text
+    else:
+        warnings.pop(key, None)
+    m.warnings = warnings
+    m.warning = "\n".join(warnings.values()) or None
 
 
 def _clock(ms: int) -> str:

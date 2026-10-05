@@ -78,6 +78,8 @@ export interface Meeting {
   minutes_template: string | null;
   minutes_at: string | null;
   created_at: string;
+  /** 服务器每次写库都会更新；用来丢掉晚到的旧数据（接口返回值和事件流可能乱序） */
+  updated_at: string;
   started_at: string | null;
   finished_at: string | null;
 }

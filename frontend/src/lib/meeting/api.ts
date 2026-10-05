@@ -153,11 +153,31 @@ export async function uploadMeeting(
     signal?.throwIfAborted();
     await Promise.all(Array.from({ length: Math.min(3, created.parts) }, worker));
     signal?.throwIfAborted();
-    return await post<Meeting>(`/api/meetings/${id}/upload/complete`);
   } catch (e) {
     // 传不完就把这条“上传中”的记录删掉，免得列表里留一条半截的
     void request('DELETE', `/api/meetings/${id}`).catch(() => {});
     throw e;
+  }
+  return completeUpload(id);
+}
+
+/** 分片都传完后请服务器拼接。拼接大文件可能超时；5xx 或网络错误时先查一下状态，确实没收下才重试，绝不删除。 */
+async function completeUpload(id: string): Promise<Meeting> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await post<Meeting>(`/api/meetings/${id}/upload/complete`);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) {
+        void request('DELETE', `/api/meetings/${id}`).catch(() => {});
+        throw e;
+      }
+      const current = await get<MeetingDetail>(`/api/meetings/${id}`).catch(() => null);
+      if (current && current.status !== 'uploading') return current;
+      if (attempt >= 3) {
+        throw new ApiError('文件已传完，但服务器确认时出错；稍后刷新列表看看，24 小时内没开始处理的会自动清理', 0);
+      }
+      await new Promise((r) => setTimeout(r, 3000 * attempt));
+    }
   }
 }
 

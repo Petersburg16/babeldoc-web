@@ -132,11 +132,15 @@ class LlmClient:
             try:
                 async with _limiter(self.cfg):
                     resp = await self.http.post(url, json=payload, headers=self._headers(), timeout=timeout)
-            except httpx.HTTPError as e:
+            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as e:
                 if attempt >= RETRIES:
                     raise LlmError(f"连接大模型失败：{e.__class__.__name__}: {e}"[:300], retryable=True) from e
                 await asyncio.sleep(2**attempt)
                 continue
+            except httpx.TimeoutException as e:
+                raise LlmError(f"大模型在 {int(timeout)} 秒内没有回复完：{e.__class__.__name__}", retryable=True) from e
+            except httpx.HTTPError as e:
+                raise LlmError(f"大模型连接中断：{e.__class__.__name__}: {e}"[:300], retryable=True) from e
             if resp.status_code == 429 or resp.status_code >= 500:
                 if attempt >= RETRIES:
                     raise LlmError(
@@ -189,6 +193,23 @@ class LlmClient:
                     if resp.status_code >= 400:
                         await resp.aread()
                         raise LlmError(f"大模型接口返回 {resp.status_code}：{_error_text(resp)}")
+                    if "text/event-stream" not in resp.headers.get("content-type", ""):
+                        # 中转不支持流式时会直接返回整段回复
+                        await resp.aread()
+                        try:
+                            data = resp.json()
+                        except ValueError as e:
+                            raise LlmError("大模型返回的内容不是 OpenAI 兼容格式") from e
+                        if isinstance(data, dict) and data.get("error"):
+                            raise LlmError(f"大模型返回错误：{_error_text(resp)}")
+                        try:
+                            text = data["choices"][0]["message"].get("content") or ""
+                        except (KeyError, IndexError, TypeError) as e:
+                            raise LlmError("大模型返回的内容不是 OpenAI 兼容格式") from e
+                        if text:
+                            started = True
+                            yield str(text)
+                        return
                     async for line in resp.aiter_lines():
                         line = line.strip()
                         if not line.startswith("data:"):
@@ -198,8 +219,15 @@ class LlmClient:
                             return
                         try:
                             event = json.loads(data)
+                        except ValueError:
+                            continue
+                        if isinstance(event, dict) and event.get("error"):
+                            err = event["error"]
+                            message = err.get("message") if isinstance(err, dict) else err
+                            raise LlmError(f"大模型返回错误：{str(message)[:300]}")
+                        try:
                             delta = event["choices"][0].get("delta") or {}
-                        except (ValueError, KeyError, IndexError, TypeError):
+                        except (KeyError, IndexError, TypeError):
                             continue
                         text = delta.get("content")
                         if text:

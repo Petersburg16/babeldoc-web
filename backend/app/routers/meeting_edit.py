@@ -111,8 +111,11 @@ def _bump_rev(db: Session, meeting_id: str) -> None:
     )
 
 
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ufffe\uffff]")
+
+
 def _clean_text(text: str) -> str:
-    return re.sub(r"\s*[\r\n]+\s*", " ", text).strip()
+    return re.sub(r"\s*[\r\n]+\s*", " ", _CONTROL.sub(" ", text)).strip()
 
 
 @router.patch("/{meeting_id}/segments/{idx}")
@@ -218,6 +221,7 @@ def unmerge_speaker(meeting_id: str, body: UnmergeIn, user: UserDep, db: DbDep, 
     )
     info["merged_into"] = None
     m.speakers = speakers
+    _bump_rev(db, meeting_id)
     db.commit()
     ctx.meetings.publish(meeting_id)
     return detail_out(ctx, db, m)
@@ -250,7 +254,7 @@ def rename_speaker(
     m = _locked(db, user, meeting_id)
     speakers = _speakers(m)
     info = _known(speakers, speaker)
-    info["name"] = " ".join(body.name.split())  # 空字符串表示取消命名，显示回“说话人 N”
+    info["name"] = " ".join(_CONTROL.sub(" ", body.name).split())  # 空字符串表示取消命名，显示回“说话人 N”
     m.speakers = speakers
     db.commit()
     ctx.meetings.publish(meeting_id)

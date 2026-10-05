@@ -85,6 +85,8 @@ class AsrAdapter:
     fields: ClassVar[tuple[FieldSpec, ...]] = ()
     dev_only: ClassVar[bool] = False  # 只在模拟引擎（开发、测试）下出现
     poll_interval: ClassVar[tuple[float, float]] = (3.0, 20.0)  # 查询间隔：起始值和上限（逐次放大）
+    # 提交后多少小时内能查到任务（0 表示足够长）。过期后任务号可能被复用，不能再查
+    task_ttl_hours: ClassVar[float] = 0
 
     def __init__(self, config: dict[str, Any], secrets: dict[str, str], client: httpx.AsyncClient):
         self.config = config

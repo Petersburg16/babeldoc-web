@@ -209,6 +209,8 @@ def detect_silences(ffmpeg: str, src: Path, noise_db: int = -35, min_seconds: fl
         )
     except FileNotFoundError as e:
         raise MediaError("服务器上没有找到 ffmpeg") from e
+    except subprocess.TimeoutExpired as e:
+        raise MediaError("分析录音里的静音超时") from e
     spans: list[tuple[int, int]] = []
     start: float | None = None
     for kind, value in SILENCE.findall(out.stderr):

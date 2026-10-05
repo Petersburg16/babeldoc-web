@@ -57,10 +57,15 @@ def _join(warnings: list[str]) -> str | None:
 
 async def run_pipeline(manager: MeetingManager, meeting_id: str) -> str | None:
     """识别刚完成时跑一遍：说话人识别 → 整理 → 纪要。"""
+    return _join(list((await run_pipeline_steps(manager, meeting_id)).values()))
+
+
+async def run_pipeline_steps(manager: MeetingManager, meeting_id: str) -> dict[str, str | None]:
+    """同 run_pipeline，但按步骤返回警告（键为 speakers / polish / minutes / pipeline），便于以后单独清除。"""
     client = _client(manager, meeting_id)
     if client is None:
-        return NO_MODEL
-    warnings: list[str] = []
+        return {"pipeline": NO_MODEL}
+    warnings: dict[str, str | None] = {}
     steps = (
         ("speakers", SPEAKERS_SPAN, "识别说话人"),
         ("polish", POLISH_SPAN, "整理逐字稿"),
@@ -69,15 +74,14 @@ async def run_pipeline(manager: MeetingManager, meeting_id: str) -> str | None:
     for index, (step, span, label) in enumerate(steps):
         manager.set_progress(meeting_id, span[0], step)
         warning, fatal = await _step(manager, meeting_id, client, step, span, label, {})
-        if warning:
-            warnings.append(warning)
+        warnings[step] = warning
         if fatal:
             skipped = "、".join(s[2] for s in steps[index + 1 :])
             if skipped:
-                warnings.append(f"大模型暂时不可用，跳过了{skipped}，稍后可以在会议页面重新操作")
+                warnings["pipeline"] = f"大模型暂时不可用，跳过了{skipped}，稍后可以在会议页面重新操作"
             break
     _settle_minutes(manager, meeting_id)
-    return _join(warnings)
+    return warnings
 
 
 async def run_op(manager: MeetingManager, meeting_id: str, op: str, params: dict[str, Any]) -> str | None:

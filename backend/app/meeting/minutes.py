@@ -413,7 +413,7 @@ def _load_lines(
 def _finish(manager: MeetingManager, meeting_id: str, usage: _Usage, **values: Any) -> None:
     with manager.Session() as db:
         m = db.get(Meeting, meeting_id)
-        if m is None:
+        if m is None or m.deleted_at is not None:
             return
         for key, value in values.items():
             setattr(m, key, value)
@@ -426,7 +426,7 @@ def _restore(manager: MeetingManager, meeting_id: str, usage: _Usage) -> None:
     """被取消：退回生成前的样子（已有纪要就算 ready），免得界面一直显示“生成中”。"""
     with manager.Session() as db:
         m = db.get(Meeting, meeting_id)
-        if m is None:
+        if m is None or m.deleted_at is not None:
             return
         m.minutes_state = "ready" if m.minutes_md else "none"
         db.commit()

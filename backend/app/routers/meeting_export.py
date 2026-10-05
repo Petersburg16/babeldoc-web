@@ -19,6 +19,7 @@ from ..meeting.export import (
     content_disposition,
     file_names,
     render,
+    xml_safe,
 )
 from ..models import MeetingSegment, User
 from .meetings import own_meeting
@@ -44,13 +45,16 @@ def export_meeting(
             select(MeetingSegment).where(MeetingSegment.meeting_id == meeting_id).order_by(MeetingSegment.idx)
         ).all()
         data = ExportData(
-            title=m.title.strip() or "会议记录",
+            title=xml_safe(m.title).strip() or "会议记录",
             created_at=m.created_at,
             duration_ms=m.duration_ms,
             provider_name=m.provider_name,
-            speakers=dict(m.speakers or {}),
-            minutes_md=m.minutes_md,
-            segments=[ExportSegment(s.start_ms, s.end_ms, s.speaker, s.text) for s in rows],
+            speakers={
+                k: {**v, "name": xml_safe(str(v.get("name") or ""))} if isinstance(v, dict) else v
+                for k, v in (m.speakers or {}).items()
+            },
+            minutes_md=xml_safe(m.minutes_md) if m.minutes_md else m.minutes_md,
+            segments=[ExportSegment(s.start_ms, s.end_ms, s.speaker, xml_safe(s.text)) for s in rows],
         )
     try:
         body = render(data, fmt, content)

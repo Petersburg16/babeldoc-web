@@ -146,6 +146,14 @@ def local_date(value: datetime | None) -> str:
 # ---------- 内容整理 ----------
 
 
+_XML_ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]")
+
+
+def xml_safe(text: str) -> str:
+    """去掉 Word（XML）不允许的控制字符；老数据里可能有从别处粘贴带进来的。"""
+    return _XML_ILLEGAL.sub(" ", text)
+
+
 def _clean(text: str) -> str:
     return re.sub(r"\s*\n\s*", " ", text).strip()
 

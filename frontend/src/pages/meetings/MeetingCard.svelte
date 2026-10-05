@@ -146,7 +146,7 @@
     <div class="min-w-0 flex-1">
       <div class="flex items-start gap-3">
         <h3 class="min-w-0 flex-1 truncate pt-0.5 text-[14.5px] font-semibold" title={m.title}>
-          {#if m.status === 'done'}
+          {#if m.status !== 'uploading'}
             <a href="/meetings/{m.id}" class="hover:text-accent hover:underline">{m.title}</a>
           {:else}
             {m.title}
@@ -241,6 +241,8 @@
       <div class="mt-3.5 flex flex-wrap items-center justify-end gap-2">
         {#if m.status === 'done'}
           <a class="btn btn-primary btn-sm" href="/meetings/{m.id}">打开 <ArrowRight class="size-3.5" /></a>
+        {:else if (m.status === 'failed' || m.status === 'canceled') && m.transcript_rev > 0}
+          <a class="btn btn-secondary btn-sm" href="/meetings/{m.id}">查看逐字稿 <ArrowRight class="size-3.5" /></a>
         {/if}
         {#if uploadingHere}
           <button class="btn btn-secondary btn-sm" disabled={upload.canceling || upload.ratio >= 1} onclick={() => upload.cancel()}>

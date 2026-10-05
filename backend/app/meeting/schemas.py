@@ -54,6 +54,7 @@ class MeetingOut(BaseModel):
     minutes_template: str | None
     minutes_at: datetime | None
     created_at: datetime
+    updated_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
 
@@ -105,6 +106,7 @@ class MeetingOut(BaseModel):
             minutes_template=m.minutes_template,
             minutes_at=m.minutes_at,
             created_at=m.created_at,
+            updated_at=m.updated_at or m.created_at,
             started_at=m.started_at,
             finished_at=m.finished_at,
         )

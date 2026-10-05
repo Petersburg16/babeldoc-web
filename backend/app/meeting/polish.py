@@ -11,6 +11,7 @@ import asyncio
 import logging
 import re
 import unicodedata
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -33,9 +34,15 @@ CONTEXT_LINES = 2
 MAX_PARALLEL = 3
 ATTEMPTS = 2  # 整块失败重试一次
 RATIO_MIN, RATIO_MAX = 0.4, 1.3
+# 同音纠错、术语统一会换几个字；超过 max(4 字, 三成) 的新字视为添加了内容
+MAX_NEW_CHARS, NEW_CHAR_SHARE = 4, 0.3
 
 _OUT_LINE = re.compile(r"^\s*[#＃]\s*(\d+)\s*[:：.、]?\s*(.*)$")
 _SPEAKER_TAG = re.compile(r"^\[\s*S\d+\s*\]\s*")
+# 模型偶尔会写成 S1：、[[S1]]、【S1】这类变体；只在原句不是这样开头时才去掉
+_LOOSE_TAG = re.compile(
+    r"^(?:\[\[?|【|\(|（)?\s*S\d+\s*(?:\]\]?|】|\)|）)?\s*[:：]\s*|^(?:\[\[|【)\s*S\d+\s*(?:\]\]|】)\s*"
+)
 _STRAY_TAG = re.compile(r"</?\s*(?:transcript|context)\s*>", re.IGNORECASE)
 
 
@@ -79,13 +86,24 @@ def content_length(text: str) -> int:
     return sum(1 for ch in text if not ch.isspace() and unicodedata.category(ch)[0] not in "PS")
 
 
+def content_chars(text: str) -> Counter[str]:
+    return Counter(ch for ch in text if not ch.isspace() and unicodedata.category(ch)[0] not in "PS")
+
+
+def added_content(raw: str, polished: str) -> bool:
+    """整理结果里出现了原句没有的字，而且超出同音纠错、术语统一能解释的量。"""
+    new = content_chars(polished) - content_chars(raw)
+    total = content_length(polished)
+    return sum(new.values()) > max(MAX_NEW_CHARS, NEW_CHAR_SHARE * total)
+
+
 def acceptable(raw: str, polished: str) -> bool:
     if not polished.strip():
         return False
     before, after = content_length(raw), content_length(polished)
     if before == 0:
         return False
-    return RATIO_MIN <= after / before <= RATIO_MAX
+    return RATIO_MIN <= after / before <= RATIO_MAX and not added_content(raw, polished)
 
 
 def parse_output(text: str) -> list[tuple[int, str]]:
@@ -111,14 +129,21 @@ def check_output(lines: list[Line], output: str) -> tuple[dict[int, str], int] |
         return None
     by_idx = dict(parsed)
     accepted: dict[int, str] = {}
-    rejected = 0
-    for line in lines:
+    grew: list[int] = []  # 因为“多出内容”被拒的句子在块内的位置
+    for pos, line in enumerate(lines):
         polished = by_idx[line.idx]
+        if not _LOOSE_TAG.match(line.text):
+            polished = _LOOSE_TAG.sub("", polished, count=1).strip()
         if acceptable(line.text, polished):
             accepted[line.idx] = polished
-        else:
-            rejected += 1
-    return accepted, rejected
+        elif content_length(polished) > content_length(line.text) or added_content(line.text, polished):
+            grew.append(pos)
+    # 一句被塞进了别处的文字，相邻句往往就少了这段：一起保留原样，免得悄悄丢字或重复
+    for pos in grew:
+        for near in (pos - 1, pos + 1):
+            if 0 <= near < len(lines):
+                accepted.pop(lines[near].idx, None)
+    return accepted, len(lines) - len(accepted)
 
 
 async def polish_meeting(

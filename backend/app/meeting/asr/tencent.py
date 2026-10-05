@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -94,7 +95,8 @@ def hotword_list(words: list[str]) -> str:
     out: list[str] = []
     seen: set[str] = set()
     for word in words:
-        w = word.replace("|", "").replace(",", "").strip()
+        # 文档：热词不能含标点、特殊字符和空格；TCSF-Net 这类词去掉连字符后仍能命中发音
+        w = re.sub(r"[^\u4e00-\u9fffA-Za-z0-9]", "", word)
         if not w or w in seen or len(w.encode("utf-8")) > HOTWORD_MAX_BYTES:
             continue
         seen.add(w)
@@ -145,6 +147,7 @@ class TencentMeetingAdapter(AsrAdapter):
     description = "录音文件识别的多人会议引擎，自动区分说话人（最多 20 人）；单个文件最长 5 小时。"
     # 官方上限 5 小时，留几分钟余量
     capability = Capability(max_part_seconds=17700, max_bytes=1024**3, hotwords=True, speaker_count=False)
+    task_ttl_hours = 23  # 任务只保留 24 小时，跨天后 TaskId 可能重复
     fields = (
         FieldSpec("secret_id", "SecretId", secret=True),
         FieldSpec("secret_key", "SecretKey", secret=True),
@@ -198,7 +201,13 @@ class TencentMeetingAdapter(AsrAdapter):
         hotwords = hotword_list(opts.hotwords)
         if hotwords:
             body["HotwordList"] = hotwords
-        data = await self._call("CreateRecTask", body)
+        try:
+            data = await self._call("CreateRecTask", body)
+        except TencentApiError as e:
+            if not hotwords or not e.code.startswith("InvalidParameter"):
+                raise
+            body.pop("HotwordList")
+            data = await self._call("CreateRecTask", body)
         try:
             return str(int(data["Data"]["TaskId"]))
         except (KeyError, TypeError, ValueError) as e:

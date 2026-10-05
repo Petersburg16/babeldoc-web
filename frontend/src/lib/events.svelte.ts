@@ -11,6 +11,9 @@ class EventStream {
   private handlers = new Map<string, Set<Handler>>();
   private reconnectHandlers = new Set<() => void>();
   private everConnected = false;
+  private wanted = false;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private retryDelay = 3000;
 
   /** 订阅一种事件，返回取消订阅的函数 */
   on(type: string, handler: Handler) {
@@ -31,21 +34,36 @@ class EventStream {
   }
 
   connect() {
+    this.wanted = true;
     if (this.source) return;
     const source = new EventSource('/api/events');
     this.source = source;
     source.addEventListener('hello', () => {
       this.connected = true;
+      this.retryDelay = 3000;
       if (this.everConnected) for (const handler of this.reconnectHandlers) handler();
       this.everConnected = true;
     });
     for (const type of this.handlers.keys()) source.addEventListener(type, (e) => this.dispatch(type, e as MessageEvent));
     source.onerror = () => {
       this.connected = false;
+      if (source.readyState !== EventSource.CLOSED || this.source !== source) return;
+      source.close();
+      this.source = null;
+      if (!this.wanted || this.retryTimer) return;
+      this.retryTimer = setTimeout(() => {
+        this.retryTimer = null;
+        if (this.wanted) this.connect();
+      }, this.retryDelay);
+      this.retryDelay = Math.min(30_000, this.retryDelay * 2);
     };
   }
 
   disconnect() {
+    this.wanted = false;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    this.retryDelay = 3000;
     this.source?.close();
     this.source = null;
     this.connected = false;

@@ -18,6 +18,7 @@ class MeetingsStore {
   /** 详情页正在看的会议（带纪要正文）；事件到来时就地更新 */
   detail = $state<MeetingDetail | null>(null);
   options = $state<MeetingOptions | null>(null);
+  private wantedDetail: string | null = null;
 
   constructor() {
     events.on('meeting', (data) => this.upsert(data.meeting));
@@ -27,7 +28,8 @@ class MeetingsStore {
     });
     events.onReconnect(() => {
       if (this.loaded) void this.load();
-      if (this.detail) void this.openDetail(this.detail.id);
+      const id = this.detail?.id;
+      if (id) void this.openDetail(id).catch(() => this.remove(id));
     });
   }
 
@@ -53,7 +55,10 @@ class MeetingsStore {
   }
 
   async openDetail(id: string) {
+    this.wantedDetail = id;
     const detail = await meetingApi.get(id);
+    // 快速切换会议时，先发出的请求可能后返回：只认最后打开的那场
+    if (this.wantedDetail !== id) return detail;
     this.detail = detail;
     this.upsert(detail, false);
     return detail;
@@ -61,10 +66,13 @@ class MeetingsStore {
 
   closeDetail() {
     this.detail = null;
+    this.wantedDetail = null;
   }
 
   upsert(m: Meeting, touchDetail = true) {
     const index = this.items.findIndex((x) => x.id === m.id);
+    const known = index >= 0 ? this.items[index] : this.detail?.id === m.id ? this.detail : null;
+    if (known && isStale(m, known)) return;
     if (index >= 0) this.items[index] = { ...this.items[index], ...m };
     else {
       this.items = [m, ...this.items];
@@ -111,6 +119,13 @@ class MeetingsStore {
     this.detail = null;
     this.options = null;
   }
+}
+
+/** 比手里的数据旧（接口返回值晚于事件到达），丢掉 */
+function isStale(incoming: Meeting, known: Meeting) {
+  const a = Date.parse(incoming.updated_at);
+  const b = Date.parse(known.updated_at);
+  return Number.isFinite(a) && Number.isFinite(b) && a < b;
 }
 
 export const meetings = new MeetingsStore();

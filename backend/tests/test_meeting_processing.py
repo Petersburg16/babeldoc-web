@@ -234,7 +234,8 @@ def test_check_output_validation():
     assert polish.check_output(lines, good + "\n#6 多出来的一句。") is None, "多号"
     assert polish.check_output(lines, "#3 我们今天讨论三个问题，好的，第一个是数据。") is None, "合并成一句"
     accepted, rejected = polish.check_output(lines, "#3 \n#4 好的。\n#5 第一个是数据，第二个是模型，第三个是论文。")
-    assert accepted == {4: "好的。"} and rejected == 2, "空行和变长太多的句子保留原文"
+    # #5 变长太多被拒，相邻的 #4 也一起保留原样（文字可能是从别的句子挪过来的）
+    assert accepted == {} and rejected == 3, "空行和变长太多的句子保留原文"
     accepted, rejected = polish.check_output(lines, "#3 讨论。\n#4 好的！！！\n#5 第一个是数据。")
     assert 3 not in accepted and rejected == 1, "删得太多"
     assert accepted[4] == "好的！！！", "补标点不算变长"
@@ -674,3 +675,30 @@ def test_end_to_end_llm_failure_still_done(app, admin_client, monkeypatch):
     segments = admin_client.get(f"/api/meetings/{created['id']}/segments").json()
     assert all(s["text"] == s["raw_text"] for s in segments), "识别原文照样可用"
     assert minutes_calls, "500 不算致命错误，纪要照常尝试"
+
+
+def test_check_output_rejects_text_moved_across_lines():
+    lines = [
+        polish.Line(5, "S1", "我们下周"),
+        polish.Line(6, "S1", "把实验做完然后写论文"),
+        polish.Line(7, "S2", "好的没问题"),
+    ]
+    # 模型把 #6 的前半句挪到了 #5：#5 多出内容被拒，相邻的 #6 也不能采用，否则“把实验做完”就丢了
+    output = "\n".join(["#5 我们下周把实验做完。", "#6 然后写论文。", "#7 好的，没问题。"])
+    accepted, rejected = polish.check_output(lines, output)
+    assert accepted == {7: "好的，没问题。"} and rejected == 2
+
+
+def test_check_output_strips_loose_speaker_tags():
+    lines = [polish.Line(1, "S1", "嗯今天先说数据"), polish.Line(2, "S2", "好的")]
+    accepted, _ = polish.check_output(lines, "\n".join(["#1 S1：今天先说数据。", "#2 【S2】好的。"]))
+    assert accepted == {1: "今天先说数据。", 2: "好的。"}
+    # 原句本来就以这种写法开头时不动它
+    lines = [polish.Line(1, "S1", "S3：型号的仪器坏了")]
+    accepted, _ = polish.check_output(lines, "#1 S3：型号的仪器坏了。")
+    assert accepted == {1: "S3：型号的仪器坏了。"}
+
+
+def test_added_content_allows_small_corrections():
+    assert not polish.added_content("激光leader很好用", "激光雷达很好用。")
+    assert polish.added_content("好的", "好的，下周三之前把消融实验做完。")

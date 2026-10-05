@@ -71,6 +71,7 @@ class FunAsrAdapter(AsrAdapter):
     description = "录音文件识别，开启说话人分离；单段建议不超过 2 小时，更长的录音自动切段。"
     # 官方建议开分人时音频不超过 2 小时，留几分钟余量
     capability = Capability(max_part_seconds=7000, max_bytes=2 * 1024**3, hotwords=False, speaker_count=True)
+    task_ttl_hours = 23  # 任务和结果地址只保留 24 小时
     fields = (
         FieldSpec(
             "api_key",

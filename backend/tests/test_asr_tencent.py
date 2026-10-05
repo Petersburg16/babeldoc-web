@@ -164,7 +164,7 @@ def test_submit_request_body():
         "SourceType": 0,
         "Url": "https://example.org/a.mp3",
         "ConvertNumMode": 1,
-        "HotwordList": "风电功率|10,TCSF-Net|10,abc|10",
+        "HotwordList": "风电功率|10,TCSFNet|10,abc|10",
     }
     # 中文热词直接以 UTF-8 发送，签名按同一串字节计算
     assert "风电功率".encode() in req.content

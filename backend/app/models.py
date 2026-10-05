@@ -158,7 +158,9 @@ class Meeting(Base):
     op: Mapped[str | None] = mapped_column(String(32), default=None)  # 正在跑的后台操作，同一场会议只跑一个
     error: Mapped[str | None] = mapped_column(Text, default=None)
     error_kind: Mapped[str | None] = mapped_column(String(16), default=None)
-    warning: Mapped[str | None] = mapped_column(Text, default=None)
+    warning: Mapped[str | None] = mapped_column(Text, default=None)  # warnings 拼起来的文字，给界面直接显示
+    # 按来源分开存的警告（asr、speakers、polish、minutes……）：某一步重跑时只清掉它自己的旧警告
+    warnings: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
     filename: Mapped[str] = mapped_column(String(255))
     file_size: Mapped[int] = mapped_column(default=0)
     duration_ms: Mapped[int] = mapped_column(default=0)
@@ -186,6 +188,8 @@ class Meeting(Base):
     attempts: Mapped[int] = mapped_column(default=0)
     audio_purged: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(default=utcnow, index=True)
+    # 每次写库都更新：前端据此丢掉比手里旧的数据（接口返回值和事件流可能乱序到达）
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
     started_at: Mapped[datetime | None] = mapped_column(default=None)
     finished_at: Mapped[datetime | None] = mapped_column(default=None)
     deleted_at: Mapped[datetime | None] = mapped_column(default=None)

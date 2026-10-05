@@ -5,13 +5,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from ..db import utcnow
@@ -33,13 +34,14 @@ from ..meeting.schemas import (
     TemplateOut,
 )
 from ..meeting.templates import TEMPLATES
-from ..models import AsrProvider, Meeting, MeetingMessage, MeetingSegment, ModelProfile, User
+from ..models import MEETING_ACTIVE, AsrProvider, Meeting, MeetingMessage, MeetingSegment, ModelProfile, User
 from ..security import new_job_id
 from ..settings_store import load_settings
 from .jobs import clean_filename
 
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
 
+CONTROL = re.compile(r"[\x00-\x1f\x7f\ufffe\uffff]")
 PART_SIZE = 8 * 1024 * 1024  # 分片上传每片 8 MB：远低于 Cloudflare 单请求 100 MB 的上限，断了重传也便宜
 AUDIO_EXTENSIONS = {
     ".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg", ".oga", ".opus", ".wma", ".amr", ".aiff", ".aif", ".caf",
@@ -151,12 +153,25 @@ def create_meeting(body: MeetingCreate, user: UserDep, db: DbDep, ctx: CtxDep) -
     limit = settings.max_audio_upload_mb * 1024 * 1024
     if body.size > limit:
         raise HTTPException(413, f"文件超过上限 {settings.max_audio_upload_mb} MB")
+    if not user.is_admin:
+        active = db.scalar(
+            select(func.count(Meeting.id)).where(
+                Meeting.user_id == user.id,
+                Meeting.deleted_at.is_(None),
+                Meeting.status.in_(("uploading", *MEETING_ACTIVE)),
+            )
+        )
+        if (active or 0) >= settings.max_active_jobs_per_user:
+            raise HTTPException(
+                400, f"同时上传或处理中的会议最多 {settings.max_active_jobs_per_user} 场，请等前面的完成"
+            )
+    ensure_disk(ctx, body.size)
     provider = usable_provider(db, ctx, body.provider_id)
     model = usable_model(db, body.model_id)
     meeting = Meeting(
         id=new_job_id(),
         user_id=user.id,
-        title=(body.title.strip() or Path(filename).stem)[:200],
+        title=(" ".join(CONTROL.sub(" ", body.title).split()) or Path(filename).stem)[:200],
         filename=filename,
         file_size=body.size,
         language=body.language,
@@ -178,6 +193,14 @@ def create_meeting(body: MeetingCreate, user: UserDep, db: DbDep, ctx: CtxDep) -
     return MeetingUploadOut(
         meeting=ctx.meetings.meeting_out(meeting, settings.file_retention_days), part_size=PART_SIZE, parts=parts
     )
+
+
+def ensure_disk(ctx: AppContext, size: int) -> None:
+    """拼接分片时分片和原件同时存在，再加转码输出，至少留 2 倍文件大小加 1 GB 余量；磁盘写满会连带数据库写不进去。"""
+    ctx.meetings.config.meetings_dir.mkdir(parents=True, exist_ok=True)
+    free = shutil.disk_usage(ctx.meetings.config.meetings_dir).free
+    if free < size * 2 + 1024**3:
+        raise HTTPException(507, "服务器磁盘空间不足，请联系管理员")
 
 
 def _expected_part_size(total: int, index: int) -> int:
@@ -255,7 +278,7 @@ def get_meeting(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> Meeti
 def patch_meeting(meeting_id: str, body: MeetingPatch, user: UserDep, db: DbDep, ctx: CtxDep) -> MeetingDetailOut:
     m = own_meeting(db, user, meeting_id)
     if body.title is not None:
-        m.title = body.title.strip()
+        m.title = " ".join(CONTROL.sub(" ", body.title).split()) or m.title
     if body.template is not None:
         m.template = body.template
     if body.extra_instructions is not None:
@@ -307,29 +330,58 @@ def retry_meeting(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> Mee
         raise HTTPException(409, "录音已过保留期清理，无法重试")
     directory = ctx.meetings.meeting_dir(meeting_id)
     has_segments = bool(db.scalar(select(func.count(MeetingSegment.id)).where(MeetingSegment.meeting_id == meeting_id)))
+    parts = m.asr_parts or []
     if has_segments:
-        m.status = "processing"
-    elif (directory / AUDIO_NAME).is_file() and m.asr_parts:
-        # 已经识别完的分段保留；其余分段重新提交（服务商那边失败的任务查不回来了）
-        reset = {"state": "pending", "task_id": None, "token": None, "token_exp": None, "submitted_at": None}
-        m.asr_parts = [
-            p
-            if p.get("state") == "done" and p.get("raw") and (directory / str(p["raw"])).is_file()
-            else {**p, **reset, "error": None}
-            for p in m.asr_parts
-        ]
-        m.status = "transcribing"
+        status = "processing"
+    elif (directory / AUDIO_NAME).is_file() and parts:
+        parts = [retry_part(p, directory) for p in parts]
+        status = "transcribing"
     elif (directory / source_name(m.filename)).is_file():
-        m.status = "queued"
+        status = "queued"
     else:
         raise HTTPException(409, "原文件已经不在了，请重新上传")
-    m.error = None
-    m.error_kind = None
-    m.finished_at = None
-    m.stage = ""
+    kept = {k: v for k, v in (m.warnings or {}).items() if k == "asr" and status == "processing" and v}
+    # 条件更新：两台设备同时点重试时只有一个生效，另一个不会覆盖驱动刚写入的令牌
+    changed = db.execute(
+        update(Meeting)
+        .where(Meeting.id == meeting_id, Meeting.status.in_(("failed", "canceled")))
+        .values(
+            status=status,
+            asr_parts=parts,
+            error=None,
+            error_kind=None,
+            finished_at=None,
+            stage="",
+            warning="\n".join(kept.values()) or None,
+            warnings=kept,
+        )
+    ).rowcount
     db.commit()
+    if not changed:
+        raise HTTPException(409, "这场会议的状态已经变了，请刷新后再试")
     ctx.meetings.request_launch(meeting_id)
+    db.refresh(m)
     return ctx.meetings.meeting_out(m, load_settings(db).file_retention_days)
+
+
+def retry_part(part: dict, directory: Path) -> dict:
+    """重试时一个分段怎么处理：结果已在盘上的算完成；服务商明确失败（final）或根本没提交上的重新提交；
+    其余（断网、被一起取消、我方出错）保留任务号，接着查同一个任务，不重复计费。"""
+    raw = str(part.get("raw") or f"asr-{part.get('index', 0)}.json")
+    if (directory / raw).is_file():
+        return {**part, "state": "done", "raw": raw, "error": None}
+    if part.get("final") or not part.get("task_id"):
+        return {
+            **part,
+            "state": "pending",
+            "task_id": None,
+            "token": None,
+            "token_exp": None,
+            "submitted_at": None,
+            "error": None,
+            "final": False,
+        }
+    return {**part, "state": "submitted", "error": None}
 
 
 @router.delete("/{meeting_id}", status_code=204)
@@ -338,11 +390,17 @@ def delete_meeting(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> No
     if m.status == "uploading":
         db.delete(m)
     else:
-        # 保留这一行用来统计识别用量，内容全部删掉
+        # 保留这一行用来统计识别用量，内容全部删掉（标题、文件名本身也可能敏感）
         m.deleted_at = utcnow()
+        m.title = "（已删除）"
+        m.filename = ""
         m.minutes_md = None
         m.speakers = {}
         m.extra_instructions = ""
+        m.error = None
+        m.warning = None
+        m.warnings = {}
+        m.asr_parts = []
         db.execute(delete(MeetingSegment).where(MeetingSegment.meeting_id == meeting_id))
         db.execute(delete(MeetingMessage).where(MeetingMessage.meeting_id == meeting_id))
     db.commit()
