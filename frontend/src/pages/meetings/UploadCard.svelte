@@ -185,6 +185,9 @@
     speakers = null;
     extra = '';
   }
+  function sizeLimit(mb: number) {
+    return mb >= 1024 && mb % 1024 === 0 ? `${mb / 1024} GB` : `${mb} MB`;
+  }
 </script>
 
 <div class="card flex flex-col p-4 sm:p-5">
@@ -198,7 +201,7 @@
       maxMb={options?.max_audio_upload_mb ?? 0}
       disabled={upload.active || !options}
       hint={options
-        ? `支持常见音频，也支持会议软件导出的视频；单个不超过 ${options.max_audio_upload_mb} MB、${options.max_audio_hours} 小时`
+        ? `支持常见音频，也支持会议软件导出的视频；单个不超过 ${sizeLimit(options.max_audio_upload_mb)}、${options.max_audio_hours} 小时`
         : '正在读取上传设置…'}
     />
     {#if file}

@@ -80,7 +80,7 @@
           <input id="s-name" class="field" required maxlength={40} bind:value={form.site_name} />
         </div>
         <div>
-          <label class="label" for="s-ann">公告 <span class="font-normal text-muted">（显示在翻译页顶部，留空不显示）</span></label>
+          <label class="label" for="s-ann">公告 <span class="font-normal text-muted">（显示在翻译和会议记录页顶部，留空不显示）</span></label>
           <textarea id="s-ann" class="field" rows="2" maxlength={500} placeholder="例如：本站使用中转 API，请勿上传涉密文件" bind:value={form.announcement}></textarea>
         </div>
       </div>
@@ -114,7 +114,7 @@
         <div>
           <label class="label" for="s-retain">文件保留天数</label>
           <input id="s-retain" class="field" type="number" min="1" max="365" bind:value={form.file_retention_days} />
-          <p class="hint">超过后自动删除原文与译文，任务记录保留</p>
+          <p class="hint">超过后自动删除原文与译文、会议录音；任务记录和会议的文字记录保留</p>
         </div>
       </div>
     </section>

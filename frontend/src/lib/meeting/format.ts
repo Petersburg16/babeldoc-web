@@ -15,6 +15,10 @@ export function clock(ms: number) {
 export function spoken(ms: number) {
   const total = Math.round(ms / 1000);
   if (total < 60) return `${total} 秒`;
+  if (total < 600) {
+    const s = total % 60;
+    return s ? `${Math.floor(total / 60)} 分 ${s} 秒` : `${total / 60} 分钟`;
+  }
   const minutes = Math.round(total / 60);
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
