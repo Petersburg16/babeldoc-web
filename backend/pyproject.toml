@@ -1,6 +1,6 @@
 [project]
 name = "babeldoc-web"
-version = "0.3.0"
+version = "0.4.0"
 description = "BabelDOC 多用户 Web 服务：账号、任务队列、进度推送与管理后台"
 requires-python = ">=3.12"
 dependencies = [

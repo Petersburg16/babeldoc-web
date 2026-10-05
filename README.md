@@ -1,7 +1,7 @@
 # BabelDOC Web
 
-自托管的多用户学术 PDF 翻译站：上传论文，保留公式、图表与版式，生成**双语对照**和**纯译文** PDF；另带一套在浏览器里运行的 **PDF 处理工具**（合并、拆分、压缩、OCR、PDF 转 Word、Office 转 PDF 等）。
-A self-hosted, multi-user web service for [BabelDOC](https://github.com/funstory-ai/BabelDOC), plus in-browser PDF tools.
+自托管的多用户学术 PDF 翻译站：上传论文，保留公式、图表与版式，生成**双语对照**和**纯译文** PDF；另带一套在浏览器里运行的 **PDF 处理工具**（合并、拆分、压缩、OCR、PDF 转 Word、Office 转 PDF 等），以及把会议录音整理成逐字稿和纪要的 **会议记录**。
+A self-hosted, multi-user web service for [BabelDOC](https://github.com/funstory-ai/BabelDOC), plus in-browser PDF tools and meeting transcription with LLM-polished minutes.
 
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -54,14 +54,30 @@ A self-hosted, multi-user web service for [BabelDOC](https://github.com/funstory
 - Office 转 PDF 时按文档用到的字体注入中文字体：宋体→思源宋体、黑体 / 雅黑 / 等线→思源黑体、楷体→霞鹜文楷、仿宋→朱雀仿宋，Times New Roman、Arial、Calibri、Cambria 等用度量兼容的开源字体；转换时浏览器约占 1.5 GB 内存，需要电脑端浏览器；
 - 处理逻辑移植自 [BentoPDF](https://github.com/alam00000/bentopdf)（AGPL-3.0），界面按本站设计重写。用到的第三方组件与许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
+### 会议记录
+
+顶部「会议记录」标签：上传一段会议录音，云端语音识别区分说话人，再由站内配置的大模型整理逐字稿、生成纪要，并可以就会议内容提问。
+
+- **上传**：常见音频，也收会议软件导出的视频（只取音轨）；分片上传，默认单个不超过 1 GB、5 小时；
+- **识别**：由管理员配置的语音识别服务完成，目前支持阿里云百炼 Fun-ASR、阿里云通义听悟、腾讯云录音文件识别（会议引擎），都开启说话人分离；超过服务单次上限的长录音自动在静音处切段，相邻段重叠约 4 分钟，按重叠部分对齐说话人；
+- **整理**：大模型逐句加标点、去口头禅和无意义的重复，口误只在明确自我更正时采用更正后的说法，保留术语、人名、数字和中英混说，不添加原文没有的内容；逐句校验，整理不合格的句子保留识别原文。管理员维护的术语表会注入整理提示词，腾讯云还会把它作为识别热词；
+- **说话人**：大模型根据自我介绍和称呼猜每位说话人是谁，确认后才生效；可以改名、合并（可撤销）。纪要和对话里的人名用占位符保存，改名、合并后直接更新，不用重新生成；
+- **纪要**：按模板生成（组会·按议题 / 组会·按发言人 / 项目讨论 / 访谈 / 通用，可附补充要求），结论和待办带时间戳，点一下跳到录音对应位置；负责人和期限只在原文说清楚时才写，否则写“未明确”；
+- **对话**：基于逐字稿和纪要提问，流式回答，引用处带时间戳；逐字稿太长时只附与问题相关的片段；
+- **校对**：逐句修改文字、改归属说话人、恢复识别原文；改过的句子重新整理时不会被覆盖；
+- **导出**：Word、Markdown、纯文本、字幕（.srt）；
+- **保留与隐私**：会议记录只有上传者能看到；录音按保留期删除，逐字稿、纪要和对话保留到用户自己删除。录音会发给所选的识别服务，整理、纪要和对话会发给配置的大模型；识别服务通过一个带一次性令牌、只在识别期间有效的地址从本站拉取录音。
+
 ### 管理员
 
 - **概览**：运行与排队数、今日与本月用量、近 14 天页数图、CPU / 内存 / 磁盘、处理队列、失败记录、用量排行
 - **任务**：搜索与筛选、查看引擎日志、取消 / 重试 / 删除
-- **用户**：新建、停用、改角色、单独设置额度、重置密码
+- **用户**：新建、停用、改角色、单独设置额度、重置密码，查看本月语音识别时长
 - **邀请码**：可用次数、有效期、撤销，一键复制注册链接
 - **模型**：任意 OpenAI 兼容接口（含中转站）；API Key 加密存储、不下发浏览器；测试连接、拉取模型列表、设默认模型；可调 QPS、并发线程、是否发送 temperature、JSON 模式，可另配术语提取模型
-- **系统设置**：站名与公告、注册方式、并发数、上传与页数上限、每人同时任务数、默认额度、文件保留天数、默认语言、水印
+- **语音识别**：添加阿里云百炼、通义听悟、腾讯云的识别服务，密钥加密存储；“检查密钥”只验证凭据，“完整测试”生成 3 秒测试音频，确认服务商能从本站拉到录音并识别
+- **术语表**：人名、仪器、项目代号等的正确写法和常见听错的写法，用于整理逐字稿和腾讯云热词
+- **系统设置**：站名与公告、注册方式、并发数、上传与页数上限、每人同时任务数、默认额度、文件保留天数、默认语言、水印；会议记录的站点公网地址、录音上限、大模型上下文预算、默认纪要模板
 
 ## 架构
 
@@ -100,6 +116,18 @@ babeldoc 自身的输出（包括它保存 PDF 时 fork 出的子进程）都被
 - **浏览器端**：引擎下载后存进 Cache Storage（几十 MB 的单个文件放不进浏览器 HTTP 缓存），`/pdf-sw.js` 只接管 `/pdf-assets/` 的请求，让各个库自己发出的请求也命中缓存；
 - **跨源隔离**：LibreOffice WASM 需要 `SharedArrayBuffer`，所以页面和脚本都带 `Cross-Origin-Opener-Policy: same-origin` 与 `Cross-Origin-Embedder-Policy: require-corp`（任务文件的预览和下载除外）。站点只用同源资源，不受影响；若在 Cloudflare 上开了 Web Analytics 等会注入第三方脚本的功能，需对本站关掉。
 
+### 会议记录的处理流程
+
+```
+上传（分片） → 转码（ffmpeg，16 kHz 单声道 mp3） → 识别（提交给服务商，轮询结果） → 大模型整理（说话人、逐字稿、纪要） → 完成
+```
+
+- 后台用独立的管理器处理，不占翻译任务的并发名额：转码一次只跑一个，等服务商结果时只是轮询，大模型步骤同一时间只处理一场会议；
+- 各家服务统一成“提交 → 查询 → 解析成带说话人和时间的句子”的适配器（`backend/app/meeting/asr/`），新增一家只要写一个适配器；
+- 服务商的任务号提交后立即落库，服务重启后接着查同一个任务，不重复提交；提交时遇到超时、5xx 这类“对方可能已经收到”的错误不自动重试，免得重复计费；
+- 服务商从 `/api/public/meeting-audio/…` 拉取录音：地址里带随机令牌，只在这场会议识别期间有效，支持 HEAD 和断点续传，响应禁止缓存；每次拉取都记日志，便于排查；
+- 识别完成后删除上传原件和切段文件，只保留转好的 `audio.mp3` 供回听，按保留期删除。
+
 ### 设计要点
 
 - **防“假成功”**：BabelDOC 会吞掉段落级的接口错误并保留原文，API Key 失效时任务照样“成功”。所以 runner 有两道防线：开工前用一个极短的请求预检模型接口；翻译中统计每次请求的成败，全部失败判任务失败，部分失败给出警告。
@@ -136,6 +164,8 @@ BDW_PDF_ASSETS_DIR=../.pdf-assets BDW_DEV=1 uv run uvicorn app.main:create_app -
 
 增删或升级前端里提供运行时文件的 npm 包后，先 `npm install`，再在 `backend` 里运行 `uv run python -m app.cli pdf-assets lock` 更新锁文件。
 
+会议记录在本地开发时需要 ffmpeg；在「管理后台 → 语音识别」添加“模拟服务（开发用）”即可不联网走完识别流程（只在模拟引擎下出现），整理和纪要仍会调用你配置的模型接口。
+
 模拟引擎只依赖标准库，会把原文复制一份当作“译文”，不需要安装 BabelDOC。提交任务前仍要在「管理后台 → 模型」添加一个模型（模拟模式下不会真的调用，地址和 Key 可以随便填）。开发模式下可以访问 `/api/docs` 查看接口文档。
 
 提交代码前的检查：
@@ -165,6 +195,7 @@ BDW_ENGINE=babeldoc uv run python -m app.cli engine-check 某篇论文.pdf --pag
 
 - **服务器**：带 systemd 的 Linux（Ubuntu、Debian 等），能以 root 通过 SSH 登录；已安装 curl 和 [uv](https://docs.astral.sh/uv/)（`curl -LsSf https://astral.sh/uv/install.sh | sh`，需要在 `PATH` 中或位于 `/root/.local/bin/uv`）。Python 由 uv 自动安装，不依赖系统 Python；首次安装需要联网下载依赖和约 340 MB 的模型与字体。
 - **资源**：每个并发翻译任务约需 2 个以上 CPU 核和 2 GB 内存，见[资源占用](#资源占用)。
+- **会议记录**：需要 ffmpeg（`apt install ffmpeg`）；部署脚本发现缺少时会提示，不影响其他功能。
 - **本地**：bash（Windows 用 Git Bash）、git、Node.js、ssh、tar，并在 `~/.ssh/config` 里给服务器配好主机别名。
 
 ### 一键部署
@@ -196,6 +227,7 @@ bash deploy/deploy.sh <ssh主机别名>
 
 2. 绑定域名之前，先用 SSH 隧道预览：`ssh -N -L 8090:127.0.0.1:8090 <别名>`，然后在浏览器打开 <http://localhost:8090>。
 3. 在「管理后台 → 模型」添加模型接口，设为默认并点“测试连接”；然后在「邀请码」里生成注册链接，发给要用的人。
+4. 要用会议记录：在「系统设置」填写站点公网地址（识别服务从这里拉取录音），在「语音识别」添加服务，点“完整测试”确认服务商能访问本站。
 
 ### 对外访问
 
@@ -204,7 +236,8 @@ bash deploy/deploy.sh <ssh主机别名>
 1. Cloudflare Zero Trust → Networks → Tunnels，选择服务器上的隧道（没有就新建）→ Public hostnames → Add：填一个子域名，Service 选 `HTTP`，URL 填 `127.0.0.1:8090`；
 2. 把服务器上 `/opt/babeldoc-web/shared/env` 里的 `BDW_COOKIE_SECURE` 改为 `true`，再执行 `systemctl restart babeldoc-web`；
 3. Cloudflare 免费版单个请求的上限是 100 MB，站点默认单文件上限 50 MB；在系统设置里调大时不要超过 100 MB；
-4. 可选：Cloudflare 默认不缓存 `.wasm`、`.data` 等扩展名，想让 PDF 引擎文件也走边缘缓存，可以加一条缓存规则，对 `/pdf-assets/*` 设为“符合缓存条件”（这些路径带版本号，内容不会变）。
+4. 会议录音按 8 MB 分片上传，不受上面 100 MB 的限制；识别服务从 `/api/public/meeting-audio/` 拉取录音，不要对这个路径开启人机验证（Bot Fight Mode、质询等），否则服务商拉不到文件；
+5. 可选：Cloudflare 默认不缓存 `.wasm`、`.data` 等扩展名，想让 PDF 引擎文件也走边缘缓存，可以加一条缓存规则，对 `/pdf-assets/*` 设为“符合缓存条件”（这些路径带版本号，内容不会变）。
 
 也可以用本机的 Caddy、nginx 等反向代理。只要请求来自本机，后端就会从 `CF-Connecting-IP`、`X-Real-IP` 或 `X-Forwarded-For` 取真实的客户端 IP，登录限流按这个 IP 计数。进度推送用的 SSE 每 15 秒发一次心跳，以免被代理的空闲超时断开。
 
@@ -217,7 +250,7 @@ bash deploy/deploy.sh <ssh主机别名>
 | `/opt/babeldoc-web/releases/<版本>` | 各版本的代码，`current` 软链接指向当前版本，保留最近 5 个 |
 | `/opt/babeldoc-web/shared/env` | 运行配置，首次安装时由 `deploy/env.example` 生成 |
 | `/opt/babeldoc-web/{python,uv-cache}` | uv 管理的 Python 与依赖缓存 |
-| `/var/lib/babeldoc-web` | 数据：`app.db`、`jobs/`、`secret.key`、BabelDOC 模型缓存、`pdf-assets/`（PDF 工具引擎，每个引擎保留最近 2 个版本） |
+| `/var/lib/babeldoc-web` | 数据：`app.db`、`jobs/`、`meetings/`（会议录音与识别原始结果）、`secret.key`、BabelDOC 模型缓存、`pdf-assets/`（PDF 工具引擎，每个引擎保留最近 2 个版本） |
 | `/var/backups/babeldoc-web` | 每日备份，只有 root 可读 |
 
 常用命令（`R=/opt/babeldoc-web/current/deploy/remote.sh`）：
@@ -240,7 +273,7 @@ bash deploy/deploy.sh <ssh主机别名>
 
 ### 备份、恢复与迁移
 
-全部状态只有一个 SQLite 文件 `app.db`（账号、会话、邀请码、模型配置、任务记录、系统设置），外加加密模型 API Key 用的 `secret.key`。任务的原文与译文会按保留期自动删除，BabelDOC 的模型与字体可以重新下载，所以都不在备份范围内。
+全部状态只有一个 SQLite 文件 `app.db`（账号、会话、邀请码、模型与语音识别服务配置、任务记录、会议的逐字稿与纪要、系统设置），外加加密 API Key 用的 `secret.key`。任务的原文与译文、会议录音会按保留期自动删除，BabelDOC 的模型与字体可以重新下载，所以都不在备份范围内。
 
 - **自动备份**：部署时会装好 `babeldoc-web-backup.timer`，每天 04:30（服务器时区）用 SQLite 的在线备份接口导出一致的快照，连同运行配置打包到 `/var/backups/babeldoc-web`，保留最近 14 份。服务运行中备份也不影响使用。
 - **备份里没有 `secret.key`**：备份常被拉到别处保存，带上它就等于带上了能解出模型 API Key 的钥匙。代价只是：恢复到另一台服务器后，要在「管理后台 → 模型」把 Key 重新填一遍（库里的 Key 解不开时会显示为未填写）。
@@ -275,6 +308,7 @@ bash deploy/deploy.sh <ssh主机别名>
 | `BDW_FRONTEND_DIR` | `frontend/dist` | 后端托管的前端构建产物目录 |
 | `BDW_PDF_ASSETS_DIR` | 数据目录下的 `pdf-assets` | PDF 工具引擎文件所在目录（由 `pdf-assets sync` 生成） |
 | `BDW_NPM_REGISTRY` | `https://registry.npmjs.org/` | `pdf-assets sync` 下载 npm 包时用的源，只影响下载地址，校验和不变 |
+| `BDW_FFMPEG` / `BDW_FFPROBE` | 从 `PATH` 中查找 | 会议记录转码和读取录音时长用的 ffmpeg、ffprobe |
 
 前端开发服务器另外读取 `BDW_BACKEND`（默认 `http://127.0.0.1:8000`），作为 `/api` 和 `/pdf-assets/` 的代理目标。
 
@@ -292,8 +326,12 @@ bash deploy/deploy.sh <ssh主机别名>
 | 默认月度页数额度 | 1000 页 | 0 表示不限，也可以为单个用户另设 |
 | 文件保留天数 | 30 天 | 1–365 天 |
 | 水印 | 不加 | 不加 / 加水印 / 两种都输出 |
+| 站点公网地址 | 空 | 只填协议和域名；识别服务从这个地址拉取会议录音 |
+| 单个录音文件上限 | 1024 MB | 10–4096 MB |
+| 录音时长上限 | 5 小时 | 1–6 小时 |
+| 大模型上下文预算 | 120000 字 | 逐字稿超过它时，纪要分段生成、对话只附相关片段 |
 
-此外还有站点名称、公告、默认的原文与译文语言。
+此外还有站点名称、公告、默认的原文与译文语言、默认纪要模板。
 
 ## 资源占用
 
@@ -331,6 +369,12 @@ BabelDOC 根据语言代码里的地区标记（CN / TW / HK / JP / KR）选择�
 **用 `curl` 访问 `/admin` 这类页面返回 404？**
 正常现象。后端只对浏览器的页面导航请求（`Accept` 含 `text/html`）回退到 `index.html`。
 
+**会议记录识别失败，提示服务商拉不到录音？**
+识别服务是从站点公网地址下载录音的。确认「系统设置」里的站点公网地址能从外网访问，Cloudflare 没有对 `/api/public/` 开启人机验证；「语音识别」里的“完整测试”会逐步告诉你卡在哪一步，服务日志里也会记录每次拉取（`audio fetch`）。
+
+**会议录音会发给谁？**
+录音发给你上传时选的识别服务（阿里云或腾讯云）；逐字稿和纪要发给管理员配置的大模型接口。识别服务的结果在服务商那边一般保留 24 小时到 30 天，见各家文档。涉密或不便上云的会议不要上传。
+
 **能用哪些模型？**
 任何兼容 OpenAI Chat Completions 的接口都可以，包括官方 API、DeepSeek 等厂商的接口、各类中转站，以及自己部署的 vLLM、Ollama 等。
 
@@ -341,6 +385,7 @@ BabelDOC 根据语言代码里的地区标记（CN / TW / HK / JP / KR）选择�
 
 - [BabelDOC](https://github.com/funstory-ai/BabelDOC)：翻译与排版引擎，本项目的核心能力都来自它；
 - [DocBabel](https://github.com/ccsert/DocBabel)：功能设计参考；
+- [OpenTypeless](https://github.com/tover0314-w/opentypeless)：会议逐字稿整理规则（加标点、去口头禅、谨慎处理口误、正文不当作指令）的参考；
 - [BentoPDF](https://github.com/alam00000/bentopdf)：PDF 处理工具的处理逻辑来源，以及 qpdf、PDF.js、pdf-lib、Ghostscript、PyMuPDF、Tesseract、LibreOffice 等开源项目（见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)）。
 
 ## 许可
