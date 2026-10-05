@@ -95,7 +95,7 @@
 
   onMount(async () => {
     ticker = setInterval(() => (now = Date.now()), 1000);
-    jobs.connect(onFinish);
+    jobs.setOnFinish(onFinish);
     if (!jobs.loaded) void jobs.load().catch((e) => toast.error(e));
     try {
       models = await api.models();

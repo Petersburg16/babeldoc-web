@@ -1,8 +1,10 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { api } from '../lib/api';
-  import { ChevronDown, FileCog, Languages, LogOut, Monitor, Moon, Shield, Sun, UserRound } from '../lib/icons';
+  import { AudioLines, ChevronDown, FileCog, Languages, LogOut, Monitor, Moon, Shield, Sun, UserRound } from '../lib/icons';
+  import { events } from '../lib/events.svelte';
   import { jobs } from '../lib/jobs.svelte';
+  import { meetings } from '../lib/meetings.svelte';
   import { router } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
   import { theme } from '../lib/theme.svelte';
@@ -24,7 +26,9 @@
     } catch (e) {
       toast.error(e);
     }
-    jobs.disconnect();
+    events.disconnect();
+    jobs.reset();
+    meetings.reset();
     session.me = null;
     router.go('/login', { replace: true });
   }
@@ -43,6 +47,13 @@
         </a>
         <a href="/pdf" class="nav-link" class:active={router.path === '/pdf' || router.path.startsWith('/pdf/')}>
           <FileCog class="size-4" /><span class="hidden sm:inline">PDF 处理</span>
+        </a>
+        <a
+          href="/meetings"
+          class="nav-link"
+          class:active={router.path === '/meetings' || router.path.startsWith('/meetings/')}
+        >
+          <AudioLines class="size-4" /><span class="hidden sm:inline">会议记录</span>
         </a>
         {#if session.isAdmin}
           <a href="/admin" class="nav-link" class:active={router.path.startsWith('/admin')}>

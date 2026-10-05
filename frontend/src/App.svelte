@@ -5,13 +5,16 @@
   import Logo from './components/Logo.svelte';
   import Toasts from './components/Toasts.svelte';
   import { onUnauthorized } from './lib/api';
+  import { events } from './lib/events.svelte';
   import { jobs } from './lib/jobs.svelte';
+  import { meetings } from './lib/meetings.svelte';
   import { interceptLinks, router } from './lib/router.svelte';
   import { session } from './lib/session.svelte';
   import Account from './pages/Account.svelte';
   import Admin from './pages/admin/Admin.svelte';
   import Home from './pages/Home.svelte';
   import Login from './pages/Login.svelte';
+  import MeetingsRoute from './pages/MeetingsRoute.svelte';
   import NotFound from './pages/NotFound.svelte';
   import PdfRoute from './pages/PdfRoute.svelte';
   import Register from './pages/Register.svelte';
@@ -20,7 +23,15 @@
 
   onUnauthorized(() => {
     session.me = null;
-    jobs.disconnect();
+    events.disconnect();
+    jobs.reset();
+    meetings.reset();
+  });
+
+  // 登录后连上全站唯一的事件流（翻译任务、会议记录、后台测试结果都走它）
+  $effect(() => {
+    if (session.me) events.connect();
+    else events.disconnect();
   });
 
   onMount(() => {
@@ -51,6 +62,7 @@
     if (path === '/') return Home;
     if (path === '/account') return Account;
     if (path === '/pdf' || path.startsWith('/pdf/')) return PdfRoute;
+    if (path === '/meetings' || path.startsWith('/meetings/')) return MeetingsRoute;
     if (path === '/admin' || path.startsWith('/admin/')) return Admin;
     return NotFound;
   });

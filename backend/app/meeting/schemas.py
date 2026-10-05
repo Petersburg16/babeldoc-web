@@ -28,6 +28,7 @@ class MeetingOut(BaseModel):
     transcript_state: str
     minutes_state: str
     minutes_stale: bool
+    transcript_rev: int
     op: str | None
     error: str | None
     error_kind: str | None
@@ -70,6 +71,7 @@ class MeetingOut(BaseModel):
             transcript_state=m.transcript_state,
             minutes_state=m.minutes_state,
             minutes_stale=bool(m.minutes_md) and m.minutes_rev is not None and m.minutes_rev != m.transcript_rev,
+            transcript_rev=m.transcript_rev or 0,
             op=m.op,
             error=m.error,
             error_kind=m.error_kind,

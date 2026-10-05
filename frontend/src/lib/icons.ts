@@ -1,4 +1,5 @@
 export { default as ArrowLeftRight } from '@lucide/svelte/icons/arrow-left-right';
+export { default as AudioLines } from '@lucide/svelte/icons/audio-lines';
 export { default as Ban } from '@lucide/svelte/icons/ban';
 export { default as BookOpenText } from '@lucide/svelte/icons/book-open-text';
 export { default as Bot } from '@lucide/svelte/icons/bot';

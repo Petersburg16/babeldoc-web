@@ -1,4 +1,5 @@
 import { api } from './api';
+import { events } from './events.svelte';
 import type { Job, LiveProgress } from './types';
 
 export type JobFilter = 'all' | 'active' | 'succeeded' | 'failed';
@@ -12,9 +13,24 @@ class JobsStore {
   loading = $state(false);
   loaded = $state(false);
   live = $state<Record<string, LiveProgress>>({});
-  connected = $state(false);
-  private source: EventSource | null = null;
   private onFinish: ((job: Job) => void) | null = null;
+
+  constructor() {
+    // 事件流由 App.svelte 统一连接；这里只订阅翻译任务相关的事件
+    events.on('job', (data) => this.upsert(data.job));
+    events.on('progress', (data) => {
+      this.live[data.id] = data;
+      const job = this.items.find((j) => j.id === data.id);
+      if (job && job.status !== 'running') job.status = 'running';
+    });
+    events.on('queue', (data) => {
+      const positions: Record<string, number> = data.positions;
+      for (const job of this.items) if (job.status === 'queued') job.queue_position = positions[job.id] ?? null;
+    });
+    events.onReconnect(() => {
+      if (this.loaded) void this.load();
+    });
+  }
 
   get hasMore() {
     return this.items.length < this.total;
@@ -62,39 +78,17 @@ class JobsStore {
     if (this.items.length < before) this.total = Math.max(0, this.total - 1);
   }
 
-  connect(onFinish: (job: Job) => void) {
+  /** 翻译任务完成或失败时的回调（翻译页用来刷新额度、弹提示） */
+  setOnFinish(onFinish: ((job: Job) => void) | null) {
     this.onFinish = onFinish;
-    if (this.source) return;
-    const source = new EventSource('/api/events');
-    this.source = source;
-    source.addEventListener('hello', () => {
-      const reconnect = this.loaded;
-      this.connected = true;
-      if (reconnect) void this.load();
-    });
-    source.addEventListener('job', (e) => this.upsert(JSON.parse((e as MessageEvent).data).job));
-    source.addEventListener('progress', (e) => {
-      const data = JSON.parse((e as MessageEvent).data);
-      this.live[data.id] = data;
-      const job = this.items.find((j) => j.id === data.id);
-      if (job && job.status !== 'running') job.status = 'running';
-    });
-    source.addEventListener('queue', (e) => {
-      const positions: Record<string, number> = JSON.parse((e as MessageEvent).data).positions;
-      for (const job of this.items) if (job.status === 'queued') job.queue_position = positions[job.id] ?? null;
-    });
-    source.onerror = () => {
-      this.connected = false;
-    };
   }
 
-  disconnect() {
-    this.source?.close();
-    this.source = null;
-    this.connected = false;
+  /** 退出登录时清空 */
+  reset() {
     this.items = [];
     this.loaded = false;
     this.live = {};
+    this.onFinish = null;
   }
 
   progressOf(job: Job) {

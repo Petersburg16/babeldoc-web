@@ -27,6 +27,11 @@ export function onUnauthorized(handler: () => void) {
   unauthorizedHandler = handler;
 }
 
+/** 给不经过 request() 的请求（分片上传、流式对话）用：遇到 401 时同样回到登录页 */
+export function notifyUnauthorized() {
+  unauthorizedHandler?.();
+}
+
 const PYDANTIC_MESSAGES: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/String should have at least (\d+) characters?/, (m) => `至少需要 ${m[1]} 个字符`],
   [/String should have at most (\d+) characters?/, (m) => `最多 ${m[1]} 个字符`],
@@ -37,6 +42,9 @@ const PYDANTIC_MESSAGES: [RegExp, (m: RegExpMatchArray) => string][] = [
 ];
 
 const FIELD_NAMES: Record<string, string> = {
+  term: '术语',
+  title: '标题',
+  public_base_url: '站点公网地址',
   username: '用户名',
   password: '密码',
   new_password: '新密码',
@@ -48,7 +56,7 @@ const FIELD_NAMES: Record<string, string> = {
   site_name: '站点名称',
 };
 
-function describeDetail(detail: unknown): string {
+export function describeDetail(detail: unknown): string {
   if (typeof detail === 'string') return detail;
   if (Array.isArray(detail) && detail.length) {
     const first = detail[0] as { msg?: string; loc?: (string | number)[] };
@@ -67,7 +75,7 @@ function describeDetail(detail: unknown): string {
   return '';
 }
 
-async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+export async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { 'X-Requested-With': 'babeldoc-web' };
   const init: RequestInit = { method, headers, credentials: 'same-origin' };
   if (body instanceof FormData) {
