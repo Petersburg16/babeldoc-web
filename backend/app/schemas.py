@@ -323,6 +323,7 @@ class AdminUserOut(BaseModel):
     total_jobs: int
     created_at: datetime
     last_login_at: datetime | None
+    month_audio_seconds: int = 0
 
 
 class AdminUserIn(BaseModel):

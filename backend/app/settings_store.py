@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -23,6 +24,20 @@ class SystemSettings(BaseModel):
     default_lang_in: str = "en"
     default_lang_out: str = "zh-CN"
     watermark_mode: Literal["no_watermark", "watermarked", "both"] = "no_watermark"
+    # 会议记录
+    public_base_url: str = Field(default="", max_length=200)
+    max_audio_upload_mb: int = Field(default=1024, ge=10, le=4096)
+    max_audio_hours: int = Field(default=5, ge=1, le=6)
+    meeting_context_chars: int = Field(default=120000, ge=10000, le=1000000)
+    default_meeting_template: str = Field(default="group_topic", max_length=32)
+
+    @field_validator("public_base_url")
+    @classmethod
+    def _public_url(cls, v: str) -> str:
+        v = v.strip().rstrip("/")
+        if v and not re.fullmatch(r"https?://[^/\s?#]+", v):
+            raise ValueError("站点公网地址只填协议和域名，例如 https://example.com")
+        return v
 
     @field_validator("default_lang_in", "default_lang_out")
     @classmethod

@@ -3,13 +3,15 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, String, Text
+from sqlalchemy import JSON, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base, utcnow
 
 JOB_ACTIVE = ("queued", "running")
 JOB_BILLABLE = ("queued", "running", "succeeded")
+# 会议记录的主状态里，这些表示还在处理（上传中不算：没传完的由清理任务收尾）
+MEETING_ACTIVE = ("queued", "transcoding", "transcribing", "processing")
 
 
 class User(Base):
@@ -120,3 +122,111 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[Any] = mapped_column(JSON)
+
+
+class AsrProvider(Base):
+    """语音识别服务（会议记录用）。机密字段整体加密成一段 JSON 存在 secret_enc。"""
+
+    __tablename__ = "asr_providers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(String(255), default="")
+    config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    secret_enc: Mapped[str] = mapped_column(Text, default="")
+    enabled: Mapped[bool] = mapped_column(default=True)
+    is_default: Mapped[bool] = mapped_column(default=False)
+    sort_order: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+
+class Meeting(Base):
+    __tablename__ = "meetings"
+
+    id: Mapped[str] = mapped_column(String(16), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    # 主状态：uploading → queued → transcoding → transcribing → processing → done（或 failed / canceled）
+    status: Mapped[str] = mapped_column(String(16), index=True, default="uploading")
+    stage: Mapped[str] = mapped_column(String(128), default="")
+    progress: Mapped[float] = mapped_column(default=0.0)
+    # 子状态：done 之后的重跑只改这些，不动主状态
+    transcript_state: Mapped[str] = mapped_column(String(16), default="none")  # none/raw/polishing/polished/partial
+    minutes_state: Mapped[str] = mapped_column(String(16), default="none")  # none/generating/ready/failed
+    op: Mapped[str | None] = mapped_column(String(32), default=None)  # 正在跑的后台操作，同一场会议只跑一个
+    error: Mapped[str | None] = mapped_column(Text, default=None)
+    error_kind: Mapped[str | None] = mapped_column(String(16), default=None)
+    warning: Mapped[str | None] = mapped_column(Text, default=None)
+    filename: Mapped[str] = mapped_column(String(255))
+    file_size: Mapped[int] = mapped_column(default=0)
+    duration_ms: Mapped[int] = mapped_column(default=0)
+    language: Mapped[str] = mapped_column(String(16), default="zh")
+    provider_id: Mapped[int | None] = mapped_column(ForeignKey("asr_providers.id", ondelete="SET NULL"), default=None)
+    provider_kind: Mapped[str] = mapped_column(String(32), default="")
+    provider_name: Mapped[str] = mapped_column(String(64), default="")
+    model_id: Mapped[int | None] = mapped_column(ForeignKey("model_profiles.id", ondelete="SET NULL"), default=None)
+    model_name: Mapped[str] = mapped_column(String(64), default="")
+    template: Mapped[str] = mapped_column(String(32), default="group_topic")
+    extra_instructions: Mapped[str] = mapped_column(Text, default="")
+    expected_speakers: Mapped[int | None] = mapped_column(default=None)
+    # 识别分段：[{index, offset_ms, duration_ms, file, token, token_exp, state, task_id, error, raw, ...}]
+    asr_parts: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    asr_seconds: Mapped[int] = mapped_column(default=0)
+    # 说话人：{"S1": {"name": "", "guess": {...} | None, "merged_into": None}}
+    speakers: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    minutes_md: Mapped[str | None] = mapped_column(Text, default=None)
+    minutes_template: Mapped[str | None] = mapped_column(String(32), default=None)
+    minutes_at: Mapped[datetime | None] = mapped_column(default=None)
+    # 逐字稿内容每改一次加 1；纪要记下生成时的版本，不一致就提示纪要已过期
+    transcript_rev: Mapped[int] = mapped_column(default=0)
+    minutes_rev: Mapped[int | None] = mapped_column(default=None)
+    tokens: Mapped[int] = mapped_column(default=0)
+    attempts: Mapped[int] = mapped_column(default=0)
+    audio_purged: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow, index=True)
+    started_at: Mapped[datetime | None] = mapped_column(default=None)
+    finished_at: Mapped[datetime | None] = mapped_column(default=None)
+    deleted_at: Mapped[datetime | None] = mapped_column(default=None)
+
+
+class MeetingSegment(Base):
+    __tablename__ = "meeting_segments"
+    __table_args__ = (Index("ix_meeting_segments_meeting_idx", "meeting_id", "idx", unique=True),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    meeting_id: Mapped[str] = mapped_column(ForeignKey("meetings.id", ondelete="CASCADE"))
+    idx: Mapped[int]
+    start_ms: Mapped[int]
+    end_ms: Mapped[int]
+    asr_speaker: Mapped[str] = mapped_column(String(16))  # 识别给的说话人，合并后也不变，用于撤销
+    speaker: Mapped[str] = mapped_column(String(16))
+    raw_text: Mapped[str] = mapped_column(Text)
+    text: Mapped[str] = mapped_column(Text)
+    edited: Mapped[bool] = mapped_column(default=False)
+
+
+class MeetingMessage(Base):
+    __tablename__ = "meeting_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    meeting_id: Mapped[str] = mapped_column(ForeignKey("meetings.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(16))
+    content: Mapped[str] = mapped_column(Text)
+    tokens: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class GlossaryTerm(Base):
+    """全站共用的术语表：正确写法 + 常见听错的写法。只有管理员能改。"""
+
+    __tablename__ = "glossary_terms"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    term: Mapped[str] = mapped_column(String(64), unique=True)
+    wrong_forms: Mapped[list[str]] = mapped_column(JSON, default=list)
+    note: Mapped[str] = mapped_column(String(255), default="")
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), default=None)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, HTTPException, Request, Response
 from sqlalchemy import Engine, select
@@ -15,6 +15,9 @@ from .events import EventBus
 from .models import AuthSession, User
 from .security import SESSION_COOKIE, LoginLimiter, SecretBox, hash_token
 from .worker import JobManager
+
+if TYPE_CHECKING:
+    from .meeting.manager import MeetingManager
 
 SESSION_REFRESH = timedelta(hours=1)
 LOCAL_PROXIES = {"127.0.0.1", "::1", "localhost"}
@@ -28,6 +31,7 @@ class AppContext:
     bus: EventBus
     secrets: SecretBox
     manager: JobManager
+    meetings: MeetingManager
     limiter: LoginLimiter = field(default_factory=LoginLimiter)
     engine_version: str | None = None
 

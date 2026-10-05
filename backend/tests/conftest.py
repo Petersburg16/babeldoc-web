@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import io
 import json
+import math
+import struct
 import time
+import wave
 from collections.abc import Iterator
 
 import pytest
@@ -98,3 +101,52 @@ def admin_client(app, client) -> TestClient:
     )
     assert resp.status_code == 201, resp.text
     return client
+
+
+MOCK_PROVIDER = {"kind": "mock", "name": "模拟识别", "config": {"delay_seconds": "0.3"}, "secrets": {"api_key": "k"}}
+
+
+def make_wav(seconds: float = 20.0, rate: int = 16000) -> bytes:
+    """一段 440 Hz 正弦波，ffmpeg 能正常转码。"""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        frames = int(seconds * rate)
+        samples = (int(8000 * math.sin(2 * math.pi * 440 * i / rate)) for i in range(frames))
+        w.writeframes(b"".join(struct.pack("<h", v) for v in samples))
+    return buf.getvalue()
+
+
+def add_mock_provider(client: TestClient, **config) -> int:
+    body = {**MOCK_PROVIDER, "config": {**MOCK_PROVIDER["config"], **config}}
+    resp = client.post("/api/admin/asr/providers", json=body)
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
+
+
+def upload_audio(client: TestClient, data: bytes, filename: str = "组会.wav", **options) -> dict:
+    resp = client.post("/api/meetings", json={"filename": filename, "size": len(data), **options})
+    assert resp.status_code == 201, resp.text
+    created = resp.json()
+    part_size = created["part_size"]
+    meeting_id = created["meeting"]["id"]
+    for i in range(created["parts"]):
+        chunk = data[i * part_size : (i + 1) * part_size]
+        put = client.put(f"/api/meetings/{meeting_id}/upload/{i}", content=chunk)
+        assert put.status_code == 200, put.text
+    done = client.post(f"/api/meetings/{meeting_id}/upload/complete")
+    assert done.status_code == 200, done.text
+    return done.json()
+
+
+def wait_meeting(client: TestClient, meeting_id: str, statuses: set[str], timeout: float = 30) -> dict:
+    deadline = time.monotonic() + timeout
+    meeting: dict = {}
+    while time.monotonic() < deadline:
+        meeting = client.get(f"/api/meetings/{meeting_id}").json()
+        if meeting.get("status") in statuses:
+            return meeting
+        time.sleep(0.1)
+    raise AssertionError(f"meeting {meeting_id} stuck in {meeting.get('status')}: {meeting.get('error')}")

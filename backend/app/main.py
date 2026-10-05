@@ -18,7 +18,20 @@ from .config import Config, load_config
 from .db import init_db, make_engine, make_sessionmaker
 from .deps import AppContext
 from .events import EventBus
-from .routers import admin, auth, jobs, meta, stream
+from .meeting.manager import MeetingManager
+from .routers import (
+    admin,
+    admin_meetings,
+    auth,
+    jobs,
+    meeting_chat,
+    meeting_edit,
+    meeting_export,
+    meetings,
+    meta,
+    public,
+    stream,
+)
 from .security import SecretBox
 from .worker import JobManager
 
@@ -76,13 +89,23 @@ class GuardMiddleware:
 def build_context(config: Config) -> AppContext:
     config.data_dir.mkdir(parents=True, exist_ok=True)
     config.jobs_dir.mkdir(parents=True, exist_ok=True)
+    config.meetings_dir.mkdir(parents=True, exist_ok=True)
     engine = make_engine(config.db_path)
     init_db(engine)
     session_factory = make_sessionmaker(engine)
     bus = EventBus()
     secrets = SecretBox(config.data_dir / "secret.key")
     manager = JobManager(config, session_factory, bus, secrets)
-    return AppContext(config=config, engine=engine, Session=session_factory, bus=bus, secrets=secrets, manager=manager)
+    meetings_manager = MeetingManager(config, session_factory, bus, secrets)
+    return AppContext(
+        config=config,
+        engine=engine,
+        Session=session_factory,
+        bus=bus,
+        secrets=secrets,
+        manager=manager,
+        meetings=meetings_manager,
+    )
 
 
 def create_app(config: Config | None = None) -> FastAPI:
@@ -96,12 +119,14 @@ def create_app(config: Config | None = None) -> FastAPI:
         ctx.bus.bind_loop(asyncio.get_running_loop())
         psutil.cpu_percent(interval=None)
         await ctx.manager.start()
+        await ctx.meetings.start()
         logging.getLogger("bdw").info(
             "BabelDOC Web %s started: engine=%s data=%s", __version__, config.engine, config.data_dir
         )
         try:
             yield
         finally:
+            await ctx.meetings.stop()
             await ctx.manager.stop()
             ctx.engine.dispose()
 
@@ -115,7 +140,19 @@ def create_app(config: Config | None = None) -> FastAPI:
     )
     app.state.ctx = ctx
     app.add_middleware(GuardMiddleware)
-    for module in (auth, meta, jobs, stream, admin):
+    for module in (
+        auth,
+        meta,
+        jobs,
+        meeting_edit,
+        meeting_chat,
+        meeting_export,
+        meetings,
+        public,
+        stream,
+        admin_meetings,
+        admin,
+    ):
         app.include_router(module.router)
 
     @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)

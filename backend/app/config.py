@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -36,6 +37,8 @@ class Config:
     session_days: int
     dev: bool
     mock_seconds: float = 12.0
+    ffmpeg: str = "ffmpeg"
+    ffprobe: str = "ffprobe"
 
     @property
     def db_path(self) -> Path:
@@ -44,6 +47,10 @@ class Config:
     @property
     def jobs_dir(self) -> Path:
         return self.data_dir / "jobs"
+
+    @property
+    def meetings_dir(self) -> Path:
+        return self.data_dir / "meetings"
 
     def with_overrides(self, **kwargs) -> Config:
         return replace(self, **kwargs)
@@ -65,4 +72,6 @@ def load_config() -> Config:
         session_days=int(_env("SESSION_DAYS", "30") or 30),
         dev=_flag("DEV", False),
         mock_seconds=float(_env("MOCK_SECONDS", "12") or 12),
+        ffmpeg=_env("FFMPEG") or shutil.which("ffmpeg") or "ffmpeg",
+        ffprobe=_env("FFPROBE") or shutil.which("ffprobe") or "ffprobe",
     )

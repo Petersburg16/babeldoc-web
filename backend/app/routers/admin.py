@@ -16,7 +16,7 @@ from ..deps import AdminDep, AppContext, CtxDep, DbDep, require_admin
 from ..engine import detect_engine_version
 from ..job_ops import cancel_job, delete_job, retry_job
 from ..llm_check import check_chat, list_remote_models
-from ..models import JOB_ACTIVE, JOB_BILLABLE, AuthSession, Invite, Job, ModelProfile, User
+from ..models import JOB_ACTIVE, JOB_BILLABLE, AuthSession, Invite, Job, Meeting, ModelProfile, User
 from ..schemas import (
     AdminUserIn,
     AdminUserOut,
@@ -211,7 +211,7 @@ def _stats(ctx: AppContext, version: str) -> dict[str, Any]:
             "memory_used": vm.total - vm.available,
             "disk_total": disk.total,
             "disk_free": disk.free,
-            "data_size": _dir_size(ctx.config.jobs_dir) if ctx.config.jobs_dir.exists() else 0,
+            "data_size": sum(_dir_size(d) for d in (ctx.config.jobs_dir, ctx.config.meetings_dir) if d.exists()),
         },
     }
 
@@ -232,6 +232,16 @@ def _admin_user_out(db: Session, user: User, month_pages: dict[int, int], totals
         created_at=user.created_at,
         last_login_at=user.last_login_at,
     )
+
+
+def _audio_map(db: Session) -> dict[int, int]:
+    """本月各用户的语音识别时长（秒）。删掉的会议也算，用量已经发生了。"""
+    rows = db.execute(
+        select(Meeting.user_id, func.sum(Meeting.asr_seconds))
+        .where(Meeting.created_at >= month_start(), Meeting.asr_seconds > 0)
+        .group_by(Meeting.user_id)
+    ).all()
+    return {int(uid): int(total or 0) for uid, total in rows}
 
 
 def _usage_maps(db: Session) -> tuple[dict[int, int], dict[int, int]]:
@@ -262,8 +272,12 @@ def _active_admins(db: Session) -> int:
 @router.get("/users")
 def list_users(db: DbDep) -> list[AdminUserOut]:
     pages, totals = _usage_maps(db)
+    audio = _audio_map(db)
     users = db.scalars(select(User).order_by(User.created_at)).all()
-    return [_admin_user_out(db, u, pages, totals) for u in users]
+    out = [_admin_user_out(db, u, pages, totals) for u in users]
+    for item in out:
+        item.month_audio_seconds = audio.get(item.id, 0)
+    return out
 
 
 @router.post("/users", status_code=201)
@@ -331,12 +345,15 @@ def delete_user(user_id: int, admin: AdminDep, db: DbDep, ctx: CtxDep) -> None:
     if user.is_admin and _active_admins(db) <= 1:
         raise HTTPException(400, "至少要保留一个可用的管理员")
     job_ids = db.scalars(select(Job.id).where(Job.user_id == user.id)).all()
+    meeting_ids = db.scalars(select(Meeting.id).where(Meeting.user_id == user.id)).all()
     for job_id in job_ids:
         ctx.manager.cancel(job_id)
     db.delete(user)
     db.commit()
     for job_id in job_ids:
         remove_job_files(ctx.config.jobs_dir, job_id)
+    for meeting_id in meeting_ids:
+        ctx.meetings.request_discard(meeting_id)
     ctx.manager.broadcast_queue()
 
 
