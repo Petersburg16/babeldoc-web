@@ -138,9 +138,10 @@ class LlmClient:
                 await asyncio.sleep(2**attempt)
                 continue
             except httpx.TimeoutException as e:
-                raise LlmError(f"大模型在 {int(timeout)} 秒内没有回复完：{e.__class__.__name__}", retryable=True) from e
+                # 请求已经发出：对方多半还在生成，这里重发只会重复计费、长时间占着大模型锁；交给调用方决定
+                raise LlmError(f"大模型在 {int(timeout)} 秒内没有回复完：{e.__class__.__name__}") from e
             except httpx.HTTPError as e:
-                raise LlmError(f"大模型连接中断：{e.__class__.__name__}: {e}"[:300], retryable=True) from e
+                raise LlmError(f"大模型连接中断：{e.__class__.__name__}: {e}"[:300]) from e
             if resp.status_code == 429 or resp.status_code >= 500:
                 if attempt >= RETRIES:
                     raise LlmError(
