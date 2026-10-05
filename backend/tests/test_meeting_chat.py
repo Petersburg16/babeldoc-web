@@ -15,7 +15,7 @@ from app.models import Meeting, MeetingMessage, MeetingSegment, User
 from app.routers import meeting_chat
 from app.security import new_job_id
 from tests.conftest import add_user, login
-from tests.llm_fake import FakeLlmFailure, _sse, install_fake_llm
+from tests.llm_fake import FakeLlmFailure, FakeReply, _sse, install_fake_llm
 
 LINES = [
     (15_000, "S1", "大家好，我是张老师，今天主要过一下大家的进展。"),
@@ -111,7 +111,7 @@ def set_context_chars(client, chars: int) -> None:
 
 def test_chat_streams_and_stores(app, admin_client):
     answer = "[[S1]] 要求下周交对比图 [00:30]。\n消融实验预计下周三前做完 [00:52]。"
-    calls = install_fake_llm(app, lambda messages, payload: answer)
+    calls = install_fake_llm(app, lambda messages, payload: FakeReply(answer, tokens=4321))
     mid = make_meeting(app, user_id(app, "admin"), minutes="# 纪要\n- [[S1]] 布置任务 [00:30]")
 
     resp, events = ask(admin_client, mid, "  老师布置了什么任务？  ")
@@ -129,7 +129,9 @@ def test_chat_streams_and_stores(app, admin_client):
     assert done["role"] == "assistant" and done["content"] == answer
 
     payload = calls[0]
-    assert payload["stream"] is True and "reasoning_effort" not in payload and "reasoning" not in payload
+    assert payload["stream"] is True and payload["stream_options"] == {"include_usage": True}
+    # 方案里思考强度是“默认”、各开关都关着：只发模型和消息
+    assert "reasoning_effort" not in payload and "reasoning" not in payload and "temperature" not in payload
     system = payload["messages"][0]
     assert system["role"] == "system"
     assert "[00:30] [[S1]]：插补方法要在论文里写清楚" in system["content"]
@@ -143,7 +145,7 @@ def test_chat_streams_and_stores(app, admin_client):
     with app.state.ctx.Session() as db:
         meeting = db.get(Meeting, mid)
         stored = db.scalar(select(MeetingMessage).where(MeetingMessage.id == done["id"]))
-        assert meeting.tokens > 0 and stored.tokens == meeting.tokens
+        assert stored.tokens == meeting.tokens == 4321, "用中转报的真实用量"
 
     # 第二问带上历史
     resp, events = ask(admin_client, mid, "那李明呢？")
@@ -205,6 +207,41 @@ def test_llm_error_is_reported(app, admin_client):
     calls = install_fake_llm(app, lambda messages, payload: "好的")
     ask(admin_client, mid, "第三次")
     assert [m["role"] for m in calls[0]["messages"]] == ["system", "user"]
+
+
+def test_chat_follows_preset_chat_step(app, admin_client):
+    model = admin_client.get("/api/admin/meeting-llm/models").json()[0]
+    resp = admin_client.patch(
+        f"/api/admin/meeting-llm/models/{model['id']}", json={"effort_levels": ["low", "medium", "high"]}
+    )
+    assert resp.status_code == 200, resp.text
+    preset = admin_client.get("/api/admin/meeting-llm/presets").json()[0]
+    steps = preset["steps"]
+    steps["chat"].update(
+        effort="high",
+        temperature={"on": True, "value": 0.3},
+        params=[{"name": "verbosity", "type": "string", "value": "low"}],
+    )
+    resp = admin_client.patch(f"/api/admin/meeting-llm/presets/{preset['id']}", json={"steps": steps})
+    assert resp.status_code == 200, resp.text
+
+    reply = FakeReply("下周三前做完消融实验。", reasoning="先想一想", reasoning_tokens=50, tokens=900)
+    calls = install_fake_llm(app, lambda messages, payload: reply)
+    mid = make_meeting(app, user_id(app, "admin"))
+    resp, events = ask(admin_client, mid, "有哪些待办？")
+    assert resp.status_code == 200 and events[-1][0] == "done"
+    payload = calls[0]
+    assert payload["reasoning_effort"] == "high" and payload["temperature"] == 0.3 and payload["verbosity"] == "low"
+    assert not {"top_p", "max_tokens", "max_completion_tokens", "response_format"} & set(payload)
+    assert "".join(d["text"] for n, d in events if n == "delta") == reply.text, "思考内容不进回答"
+    with app.state.ctx.Session() as db:
+        assert db.get(Meeting, mid).tokens == 900
+
+    # 对话用的模型停用了：直接 400，写明是哪个方案的哪个用途
+    admin_client.patch(f"/api/admin/meeting-llm/models/{model['id']}", json={"enabled": False})
+    resp, _ = ask(admin_client, mid, "还有吗？")
+    assert resp.status_code == 400 and "对话问答" in resp.json()["detail"] and preset["name"] in resp.json()["detail"]
+    assert len(calls) == 1
 
 
 def test_heartbeat_before_first_text(app, admin_client, monkeypatch):
@@ -274,7 +311,6 @@ def test_disconnect_stops_pulling_from_llm():
                 base_url="https://llm.invalid/v1",
                 api_key="k",
                 model="m",
-                send_temperature=True,
                 json_mode=False,
                 qps=1,
             )

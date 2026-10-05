@@ -19,6 +19,7 @@ from ..db import utcnow
 from ..deps import AppContext, CtxDep, DbDep, UserDep
 from ..meeting import split
 from ..meeting.asr import available_kinds
+from ..meeting.llm_config import find_preset
 from ..meeting.manager import source_name
 from ..meeting.media import AUDIO_NAME
 from ..meeting.schemas import (
@@ -29,12 +30,13 @@ from ..meeting.schemas import (
     MeetingPage,
     MeetingPatch,
     MeetingUploadOut,
+    PresetPublicOut,
     ProviderPublicOut,
     SegmentOut,
     TemplateOut,
 )
 from ..meeting.templates import TEMPLATES
-from ..models import MEETING_ACTIVE, AsrProvider, Meeting, MeetingMessage, MeetingSegment, ModelProfile, User
+from ..models import MEETING_ACTIVE, AsrProvider, Meeting, MeetingLlmPreset, MeetingMessage, MeetingSegment, User
 from ..security import new_job_id
 from ..settings_store import load_settings
 from .jobs import clean_filename
@@ -81,16 +83,16 @@ def usable_provider(db: Session, ctx: AppContext, provider_id: int | None) -> As
     return provider
 
 
-def usable_model(db: Session, model_id: int | None) -> ModelProfile | None:
-    enabled = select(ModelProfile).where(ModelProfile.enabled.is_(True))
-    if model_id is not None:
-        model = db.scalar(enabled.where(ModelProfile.id == model_id))
-        if model is None:
-            raise HTTPException(400, "所选的大模型不可用")
-        return model
-    return db.scalar(enabled.where(ModelProfile.is_default.is_(True))) or db.scalar(
-        enabled.order_by(ModelProfile.sort_order, ModelProfile.id)
-    )
+def usable_preset(db: Session, preset_id: int | None) -> MeetingLlmPreset | None:
+    """指定了就必须可用；没指定用默认方案（都没有返回 None：识别照常进行，整理时再提示）。"""
+    if preset_id is not None:
+        preset = db.scalar(
+            select(MeetingLlmPreset).where(MeetingLlmPreset.id == preset_id, MeetingLlmPreset.enabled.is_(True))
+        )
+        if preset is None:
+            raise HTTPException(400, "所选的整理方案不可用")
+        return preset
+    return find_preset(db, None)
 
 
 @router.get("/options")
@@ -126,6 +128,14 @@ def options(user: UserDep, db: DbDep, ctx: CtxDep) -> MeetingOptionsOut:
         max_audio_hours=settings.max_audio_hours,
         retention_days=settings.file_retention_days,
         split_supported=split.SUPPORTED,
+        presets=[
+            PresetPublicOut(id=p.id, name=p.name, description=p.description, is_default=p.is_default)
+            for p in db.scalars(
+                select(MeetingLlmPreset)
+                .where(MeetingLlmPreset.enabled.is_(True))
+                .order_by(MeetingLlmPreset.sort_order, MeetingLlmPreset.id)
+            )
+        ],
     )
 
 
@@ -167,7 +177,7 @@ def create_meeting(body: MeetingCreate, user: UserDep, db: DbDep, ctx: CtxDep) -
             )
     ensure_disk(ctx, body.size)
     provider = usable_provider(db, ctx, body.provider_id)
-    model = usable_model(db, body.model_id)
+    preset = usable_preset(db, body.llm_preset_id)
     meeting = Meeting(
         id=new_job_id(),
         user_id=user.id,
@@ -178,8 +188,8 @@ def create_meeting(body: MeetingCreate, user: UserDep, db: DbDep, ctx: CtxDep) -
         provider_id=provider.id,
         provider_kind=provider.kind,
         provider_name=provider.name,
-        model_id=model.id if model else None,
-        model_name=model.name if model else "",
+        llm_preset_id=preset.id if preset else None,
+        model_name=preset.name if preset else "",
         template=body.template or settings.default_meeting_template,
         extra_instructions=body.extra_instructions.strip(),
         expected_speakers=body.expected_speakers,
@@ -283,10 +293,10 @@ def patch_meeting(meeting_id: str, body: MeetingPatch, user: UserDep, db: DbDep,
         m.template = body.template
     if body.extra_instructions is not None:
         m.extra_instructions = body.extra_instructions.strip()
-    if body.model_id is not None:
-        model = usable_model(db, body.model_id)
-        assert model is not None
-        m.model_id, m.model_name = model.id, model.name
+    if body.llm_preset_id is not None:
+        preset = usable_preset(db, body.llm_preset_id)
+        assert preset is not None
+        m.llm_preset_id, m.model_name = preset.id, preset.name
     db.commit()
     ctx.meetings.publish(m.id)
     return detail_out(ctx, db, m)

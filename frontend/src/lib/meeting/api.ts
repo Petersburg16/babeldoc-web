@@ -1,10 +1,17 @@
 import { ApiError, describeDetail, notifyUnauthorized, request } from '../api';
-import type { ModelPublic } from '../types';
 import type {
   ChatMessage,
+  EffortChoice,
+  EffortDetect,
   ExportContent,
   ExportFormat,
   GlossaryTerm,
+  LlmModelAdmin,
+  LlmModelIn,
+  LlmModelPatch,
+  LlmProbeIn,
+  LlmStep,
+  LlmTestResult,
   Meeting,
   MeetingCreate,
   MeetingDetail,
@@ -12,6 +19,8 @@ import type {
   MeetingOptions,
   MeetingPage,
   MeetingUpload,
+  PresetAdmin,
+  PresetIn,
   ProviderAdmin,
   ProviderCheck,
   ProviderKind,
@@ -25,12 +34,11 @@ const del = (url: string) => request<void>('DELETE', url);
 
 export const meetingApi = {
   options: () => get<MeetingOptions>('/api/meetings/options'),
-  models: () => get<ModelPublic[]>('/api/models'),
   list: (limit: number, offset: number) => get<MeetingPage>(`/api/meetings?limit=${limit}&offset=${offset}`),
   get: (id: string) => get<MeetingDetail>(`/api/meetings/${id}`),
   patch: (
     id: string,
-    body: Partial<{ title: string; template: string; extra_instructions: string; model_id: number }>,
+    body: Partial<{ title: string; template: string; extra_instructions: string; llm_preset_id: number }>,
   ) => patch<MeetingDetail>(`/api/meetings/${id}`, body),
   cancel: (id: string) => post<Meeting>(`/api/meetings/${id}/cancel`),
   retry: (id: string) => post<Meeting>(`/api/meetings/${id}/retry`),
@@ -50,8 +58,13 @@ export const meetingApi = {
   /** 采纳大模型猜的名字；不传 speakers 表示全部采纳 */
   acceptGuesses: (id: string, speakers?: string[]) =>
     post<MeetingDetail>(`/api/meetings/${id}/speakers/accept-guesses`, { speakers: speakers ?? null }),
-  /** 后台重跑：speakers 重新猜名字；polish 重新整理（不覆盖手动改过的句子）；minutes 重新生成纪要 */
-  runOp: (id: string, op: MeetingOp, body: { template?: string; extra_instructions?: string } = {}) =>
+  /** 后台重跑：speakers 重新猜名字；polish 重新整理（不覆盖手动改过的句子）；minutes 重新生成纪要。
+   *  传 llm_preset_id 会同时把会议换成这个整理方案（之后的整理、纪要、对话都按它） */
+  runOp: (
+    id: string,
+    op: MeetingOp,
+    body: { template?: string; extra_instructions?: string; llm_preset_id?: number } = {},
+  ) =>
     post<Meeting>(`/api/meetings/${id}/ops/${op}`, body),
 
   // 对话（M5）
@@ -75,6 +88,27 @@ export const meetingApi = {
     patchTerm: (id: number, body: { term: string; wrong_forms: string[]; note: string }) =>
       patch<GlossaryTerm>(`/api/admin/glossary/${id}`, body),
     deleteTerm: (id: number) => del(`/api/admin/glossary/${id}`),
+
+    // 会议用的大模型（与翻译模型分开）和整理方案
+    llmModels: () => get<LlmModelAdmin[]>('/api/admin/meeting-llm/models'),
+    createLlmModel: (body: LlmModelIn) => post<LlmModelAdmin>('/api/admin/meeting-llm/models', body),
+    patchLlmModel: (id: number, body: LlmModelPatch) =>
+      patch<LlmModelAdmin>(`/api/admin/meeting-llm/models/${id}`, body),
+    /** 还有方案在用时返回 409 */
+    deleteLlmModel: (id: number) => del(`/api/admin/meeting-llm/models/${id}`),
+    probeLlmModels: (body: LlmProbeIn) => post<{ models: string[] }>('/api/admin/meeting-llm/models/probe', body),
+    detectEfforts: (body: LlmProbeIn) => post<EffortDetect>('/api/admin/meeting-llm/models/detect-efforts', body),
+    /** 用这个模型发一句话；effort 为 default 时不发思考参数 */
+    testLlmModel: (id: number, effort: EffortChoice = 'default') =>
+      post<LlmTestResult>(`/api/admin/meeting-llm/models/${id}/test`, { effort }),
+    presets: () => get<PresetAdmin[]>('/api/admin/meeting-llm/presets'),
+    createPreset: (body: PresetIn) => post<PresetAdmin>('/api/admin/meeting-llm/presets', body),
+    patchPreset: (id: number, body: Partial<PresetIn>) =>
+      patch<PresetAdmin>(`/api/admin/meeting-llm/presets/${id}`, body),
+    deletePreset: (id: number) => del(`/api/admin/meeting-llm/presets/${id}`),
+    /** 按方案里这个用途的实际参数发一句话 */
+    testPreset: (id: number, step: LlmStep) =>
+      post<LlmTestResult>(`/api/admin/meeting-llm/presets/${id}/test`, { step }),
   },
 };
 

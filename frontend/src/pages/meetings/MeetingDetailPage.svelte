@@ -342,8 +342,9 @@
           {#if meeting.provider_name}
             <span aria-hidden="true">·</span><span title="语音识别服务">识别 {meeting.provider_name}</span>
           {/if}
-          {#if meeting.model_name}
-            <span aria-hidden="true">·</span><span title="整理逐字稿、生成纪要用的大模型">整理 {meeting.model_name}</span>
+          <!-- 老会议（llm_preset_id 为空）的 model_name 是当时的翻译模型名，不显示 -->
+          {#if meeting.llm_preset_id != null && meeting.model_name}
+            <span aria-hidden="true">·</span><span title="整理逐字稿、生成纪要和对话用的整理方案">方案 {meeting.model_name}</span>
           {/if}
           {#if speakerCount}
             <span aria-hidden="true">·</span><span>{speakerCount} 位说话人</span>

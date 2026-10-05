@@ -142,6 +142,45 @@ class AsrProvider(Base):
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 
 
+class MeetingLlmModel(Base):
+    """会议用的大模型连接，与翻译模型（model_profiles）互不影响。"""
+
+    __tablename__ = "meeting_llm_models"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(String(255), default="")
+    base_url: Mapped[str] = mapped_column(String(255), default="")
+    api_key_enc: Mapped[str] = mapped_column(Text, default="")
+    model: Mapped[str] = mapped_column(String(128))
+    # 这个模型接受的思考强度档位（reasoning_effort），按从低到高排列；空表示不支持思考参数
+    effort_levels: Mapped[list[str]] = mapped_column(JSON, default=list)
+    qps: Mapped[int] = mapped_column(default=3)
+    json_mode: Mapped[bool] = mapped_column(default=False)
+    # 一次能放进多少字的逐字稿；空则用系统设置里的 meeting_context_chars
+    context_chars: Mapped[int | None] = mapped_column(default=None)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    sort_order: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+
+class MeetingLlmPreset(Base):
+    """整理方案：猜说话人、整理逐字稿、生成纪要、对话问答各用哪个模型、什么参数（结构见 meeting/llm_config.py）。"""
+
+    __tablename__ = "meeting_llm_presets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(String(255), default="")
+    steps: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    is_default: Mapped[bool] = mapped_column(default=False)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    sort_order: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+
 class Meeting(Base):
     __tablename__ = "meetings"
 
@@ -168,8 +207,12 @@ class Meeting(Base):
     provider_id: Mapped[int | None] = mapped_column(ForeignKey("asr_providers.id", ondelete="SET NULL"), default=None)
     provider_kind: Mapped[str] = mapped_column(String(32), default="")
     provider_name: Mapped[str] = mapped_column(String(64), default="")
+    # 0.4.0 用翻译模型整理时留下的，新会议不再写
     model_id: Mapped[int | None] = mapped_column(ForeignKey("model_profiles.id", ondelete="SET NULL"), default=None)
+    # 整理方案的名称快照（老会议里是翻译模型名）
     model_name: Mapped[str] = mapped_column(String(64), default="")
+    # 整理方案（meeting_llm_presets.id）；不加外键，方案被删时按默认方案处理
+    llm_preset_id: Mapped[int | None] = mapped_column(default=None)
     template: Mapped[str] = mapped_column(String(32), default="group_topic")
     extra_instructions: Mapped[str] = mapped_column(Text, default="")
     expected_speakers: Mapped[int | None] = mapped_column(default=None)

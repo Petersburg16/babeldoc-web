@@ -179,7 +179,7 @@ else:
     conn = sqlite3.connect(db)
 check = conn.execute("pragma integrity_check").fetchone()[0]
 tables = {r[0] for r in conn.execute("select name from sqlite_master where type = 'table'")}
-wanted = ("users", "model_profiles", "jobs", "meetings", "asr_providers")
+wanted = ("users", "model_profiles", "jobs", "meetings", "asr_providers", "meeting_llm_models", "meeting_llm_presets")
 counts = {t: conn.execute(f"select count(*) from {t}").fetchone()[0] for t in wanted if t in tables}
 note = ""
 if mode == "verify" and len(sys.argv) > 3:
@@ -189,6 +189,8 @@ if mode == "verify" and len(sys.argv) > 3:
     tokens = [r[0] for r in conn.execute("select api_key_enc from model_profiles where length(api_key_enc) > 0")]
     if "asr_providers" in tables:  # 语音识别服务的密钥同样用 secret.key 加密
         tokens += [r[0] for r in conn.execute("select secret_enc from asr_providers where length(secret_enc) > 0")]
+    if "meeting_llm_models" in tables:  # 会议用的大模型 Key
+        tokens += [r[0] for r in conn.execute("select api_key_enc from meeting_llm_models where length(api_key_enc) > 0")]
     usable = 0
     for token in tokens:
         try:

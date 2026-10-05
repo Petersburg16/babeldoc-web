@@ -21,8 +21,9 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select, update
 
 from ..deps import AppContext, CtxDep, DbDep, UserDep, current_user_id
-from ..llm import LlmClient, LlmConfig, LlmError, resolve_model
+from ..llm import LlmClient, LlmConfig, LlmError, StreamInfo
 from ..meeting import chat
+from ..meeting.llm_config import resolve_meeting_llm
 from ..meeting.schemas import MessageOut
 from ..models import Meeting, MeetingMessage, MeetingSegment
 from ..settings_store import load_settings
@@ -105,9 +106,9 @@ def prepare(ctx: AppContext, user_id: int, meeting_id: str, question: str) -> Pr
         ).all()
         if not rows:
             raise HTTPException(409, "这场会议还没有逐字稿，识别完成后才能提问")
-        llm = resolve_model(db, ctx.secrets, m.model_id)
+        llm, reason = resolve_meeting_llm(db, ctx.secrets, m.llm_preset_id, "chat")
         if llm is None:
-            raise HTTPException(400, "管理员还没有配置可用的大模型")
+            raise HTTPException(400, reason or "管理员还没有配置可用的大模型")
         recent = db.scalars(
             select(MeetingMessage)
             .where(MeetingMessage.meeting_id == meeting_id)
@@ -115,7 +116,7 @@ def prepare(ctx: AppContext, user_id: int, meeting_id: str, question: str) -> Pr
             .limit(HISTORY_LOAD)
         ).all()
         history = [(r.role, r.content) for r in reversed(recent)]
-        budget = load_settings(db).meeting_context_chars
+        budget = llm.context_chars or load_settings(db).meeting_context_chars
         info: dict[str, Any] = {
             "title": m.title,
             "duration_ms": m.duration_ms or 0,
@@ -162,10 +163,12 @@ def _event(name: str, data: dict[str, Any]) -> str:
     return f"event: {name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-async def _produce(client: LlmClient, messages: list[dict[str, str]], queue: asyncio.Queue[tuple[str, str]]) -> None:
+async def _produce(
+    client: LlmClient, messages: list[dict[str, str]], queue: asyncio.Queue[tuple[str, str]], info: StreamInfo
+) -> None:
     """在独立的任务里向大模型取数，结果放进队列；这样等待时能发心跳，断开时取消这个任务就停止取数。"""
     try:
-        async for text in client.stream(messages):
+        async for text in client.stream(messages, info=info):
             queue.put_nowait(("delta", text))
     except LlmError as e:
         queue.put_nowait(("error", str(e)))
@@ -180,7 +183,8 @@ async def sse_events(
     client: LlmClient, context: chat.ChatContext, user_message: MessageOut, save: SaveAnswer
 ) -> AsyncIterator[str]:
     queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
-    producer = asyncio.create_task(_produce(client, context.messages, queue), name="bdw-meeting-chat")
+    info = StreamInfo()
+    producer = asyncio.create_task(_produce(client, context.messages, queue, info), name="bdw-meeting-chat")
     parts: list[str] = []
     try:
         yield _event("start", {"user_message": user_message.model_dump(mode="json"), "excerpt": context.excerpt})
@@ -202,7 +206,8 @@ async def sse_events(
         if not answer:
             yield _event("error", {"message": "大模型没有返回内容，请重试"})
             return
-        saved = await save(answer, chat.estimate_tokens(context.messages, answer))
+        # 中转报了用量就用真实数（含思考 token），否则按字数估算
+        saved = await save(answer, info.tokens or chat.estimate_tokens(context.messages, answer))
         if saved is None:
             yield _event("error", {"message": "会议或对话记录已被删除，这条回答没有保存"})
             return

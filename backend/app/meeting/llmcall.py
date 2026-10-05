@@ -25,7 +25,11 @@ def add_tokens(manager: MeetingManager, meeting_id: str, tokens: int) -> None:
 async def ask(
     manager: MeetingManager, meeting_id: str, client: LlmClient, messages: list[dict[str, str]], **kwargs: Any
 ) -> ChatResult:
-    result = await client.chat(messages, **kwargs)
+    try:
+        result = await client.chat(messages, **kwargs)
+    except LlmError as e:
+        add_tokens(manager, meeting_id, e.tokens)  # 失败了也可能已经计费
+        raise
     add_tokens(manager, meeting_id, result.tokens)
     return result
 

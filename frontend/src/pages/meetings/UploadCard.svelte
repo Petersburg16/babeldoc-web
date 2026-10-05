@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
+  import { untrack } from 'svelte';
   import ProgressBar from '../../components/ProgressBar.svelte';
   import {
     Ban,
@@ -11,18 +11,15 @@
     RefreshCw,
     Sparkles,
   } from '../../lib/icons';
-  import { meetingApi } from '../../lib/meeting/api';
   import { AUDIO_ACCEPT, spoken } from '../../lib/meeting/format';
   import { Mic, ShieldCheck } from '../../lib/meeting/icons';
   import type { ProviderPublic } from '../../lib/meeting/types';
   import { meetings } from '../../lib/meetings.svelte';
-  import { toast } from '../../lib/toast.svelte';
-  import type { ModelPublic } from '../../lib/types';
   import FilePicker from '../pdf/ui/FilePicker.svelte';
   import { probeDuration, upload } from './uploadTask.svelte';
 
   interface Props {
-    /** 选项（识别服务、模板、上限）加载失败时的错误信息 */
+    /** 选项（识别服务、模板、整理方案、上限）加载失败时的错误信息 */
     optionsError?: string;
     onretry?: () => void;
   }
@@ -31,14 +28,15 @@
 
   const STORAGE_KEY = 'bdw-meeting-options';
 
+  // 0.4.0 存过 model_id（翻译模型的编号），现在不读了，下次保存时就丢掉
   interface Saved {
     provider_id: number | null;
     template: string;
-    model_id: number | null;
+    llm_preset_id: number | null;
   }
 
   function restore(): Saved {
-    const base: Saved = { provider_id: null, template: '', model_id: null };
+    const base: Saved = { provider_id: null, template: '', llm_preset_id: null };
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
       return saved && typeof saved === 'object' ? { ...base, ...saved } : base;
@@ -52,23 +50,22 @@
   const saved = restore();
   let providerId = $state<number | null>(saved.provider_id);
   let template = $state(saved.template);
-  let modelId = $state<number | null>(saved.model_id);
+  let presetId = $state<number | null>(saved.llm_preset_id);
   let files = $state<File[]>([]);
   let title = $state('');
   let autoTitle = '';
   let speakers = $state<number | null>(null);
   let extra = $state('');
   let advanced = $state(false);
-  let models = $state<ModelPublic[]>([]);
-  let modelsLoaded = $state(false);
   let probe = $state<{ file: File; seconds: number | null; done: boolean } | null>(null);
 
   const options = $derived(meetings.options);
   const providers = $derived(options?.providers ?? []);
   const templates = $derived(options?.templates ?? []);
+  const presets = $derived(options?.presets ?? []);
   const provider = $derived(providers.find((p) => p.id === providerId));
   const selectedTemplate = $derived(templates.find((t) => t.id === template));
-  const selectedModel = $derived(models.find((m) => m.id === modelId));
+  const preset = $derived(presets.find((p) => p.id === presetId));
   const file = $derived<File | null>(files[0] ?? null);
   const probing = $derived(!!file && !(probe?.file === file && probe.done));
   const seconds = $derived(probe?.file === file ? probe.seconds : null);
@@ -128,11 +125,18 @@
     };
   });
 
-  // 上次的选择失效了（服务停用、模板改名）就换回默认
+  // 上次的选择失效了（服务停用、模板改名、方案停用）就换回默认
   $effect(() => {
     const list = providers;
     untrack(() => {
       if (list.length && !list.some((p) => p.id === providerId)) providerId = (list.find((p) => p.is_default) ?? list[0]).id;
+    });
+  });
+
+  $effect(() => {
+    const list = presets;
+    untrack(() => {
+      if (list.length && !list.some((p) => p.id === presetId)) presetId = (list.find((p) => p.is_default) ?? list[0]).id;
     });
   });
 
@@ -146,22 +150,11 @@
   });
 
   $effect(() => {
-    const value = JSON.stringify({ provider_id: providerId, template, model_id: modelId });
+    const value = JSON.stringify({ provider_id: providerId, template, llm_preset_id: presetId });
     try {
       localStorage.setItem(STORAGE_KEY, value);
     } catch {
       /* 忽略 */
-    }
-  });
-
-  onMount(async () => {
-    try {
-      models = await meetingApi.models();
-      if (!models.some((m) => m.id === modelId)) modelId = (models.find((m) => m.is_default) ?? models[0])?.id ?? null;
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      modelsLoaded = true;
     }
   });
 
@@ -174,7 +167,8 @@
     const created = await upload.start(file, {
       title: title.trim() || stem(file.name),
       provider_id: provider.id,
-      model_id: modelId,
+      // 没有可用方案时传 null：服务器照常识别，整理时再提示
+      llm_preset_id: preset?.id ?? null,
       template: template || undefined,
       extra_instructions: extra.trim(),
       expected_speakers: askSpeakers ? (speakers ?? null) : null,
@@ -310,15 +304,15 @@
   </div>
 
   <div class="mt-4">
-    <label class="label" for="m-model">整理用的大模型</label>
-    {#if models.length}
-      <select id="m-model" class="field" bind:value={modelId} disabled={upload.active}>
-        {#each models as model (model.id)}<option value={model.id}>{model.name}</option>{/each}
+    <label class="label" for="m-preset">整理方案</label>
+    {#if presets.length}
+      <select id="m-preset" class="field" bind:value={presetId} disabled={upload.active}>
+        {#each presets as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
       </select>
-      {#if selectedModel?.description}<p class="hint">{selectedModel.description}</p>{/if}
-    {:else if modelsLoaded}
+      {#if preset?.description}<p class="hint">{preset.description}</p>{/if}
+    {:else if options}
       <p class="rounded-lg bg-surface-2 px-3 py-2 text-[13px] text-muted">
-        暂无可用的大模型，只能得到未整理的逐字稿，请联系管理员配置
+        管理员还没有配置整理方案：录音会照常识别，整理和纪要要等配置好后在会议页面重新生成。
       </p>
     {:else}
       <div class="h-[2.4rem] animate-pulse rounded-[9px] bg-surface-2"></div>

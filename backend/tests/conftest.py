@@ -100,6 +100,18 @@ def admin_client(app, client) -> TestClient:
         },
     )
     assert resp.status_code == 201, resp.text
+    # 会议记录用自己的大模型配置：一个会议模型 + 四个用途都用它的默认方案
+    resp = client.post(
+        "/api/admin/meeting-llm/models",
+        json={
+            "name": "会议测试模型",
+            "base_url": "https://example.invalid/v1",
+            "api_key": "sk-meeting-1234567890",
+            "model": "m",
+            "create_preset": True,
+        },
+    )
+    assert resp.status_code == 201, resp.text
     return client
 
 

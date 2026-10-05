@@ -133,7 +133,7 @@
         </div>
       </div>
       <div class="mt-3 flex flex-wrap justify-end gap-2">
-        <button class="btn btn-secondary btn-sm" disabled={busy} onclick={() => (modalOpen = true)}>换个模板</button>
+        <button class="btn btn-secondary btn-sm" disabled={busy} onclick={() => (modalOpen = true)}>换模板或方案</button>
         <button class="btn btn-primary btn-sm" disabled={busy} onclick={generate}>
           {#if starting}<LoaderCircle class="size-3.5 animate-spin" />{:else}<RefreshCw class="size-3.5" />{/if} 重试
         </button>
@@ -173,7 +173,7 @@
         用大模型按{templateName ? `「${templateName}」` : '所选'}模板整理议题、结论和待办，每条都带时间戳，点击可以跳到录音。
       </p>
       <div class="mt-5 flex flex-wrap justify-center gap-2">
-        <button class="btn btn-secondary" disabled={busy} onclick={() => (modalOpen = true)}>选择模板</button>
+        <button class="btn btn-secondary" disabled={busy} onclick={() => (modalOpen = true)}>选择模板和方案</button>
         <button class="btn btn-primary" disabled={busy} onclick={generate}>
           {#if starting}<LoaderCircle class="size-4 animate-spin" />{:else}<Sparkles class="size-4" />{/if} 生成纪要
         </button>

@@ -38,9 +38,6 @@ CHUNK_MAX_MS = 30 * 60_000  # 一直没换人也在 30 分钟处切
 TAIL_MIN_MS = 5 * 60_000  # 不足 5 分钟的尾巴并进上一段
 CHUNK_FILL = 0.8  # 每段逐字稿最多占上下文预算的比例，留出提示词的位置
 NOTES_PARALLEL = 3
-NOTES_TIMEOUT = 300
-# 非流式请求在整份纪要写完前收不到任何字节，读超时就是整次生成的上限，长会议要留足
-MINUTES_TIMEOUT = 900
 NOTES_PREFIX = "minutes-notes-"
 LONG_MS = 3600 * 1000
 
@@ -380,8 +377,13 @@ class _Usage:
         self.tokens = 0
         self.truncated = False
 
-    async def chat(self, client: LlmClient, messages: list[dict[str, str]], timeout: float) -> str:
-        result: ChatResult = await client.chat(messages, timeout=timeout)
+    async def chat(self, client: LlmClient, messages: list[dict[str, str]], *, stream: bool = False) -> str:
+        # 最后合成纪要输出长，用流式取：只要求两段输出之间不超时，思考慢的模型也不会被一次读超时卡死
+        try:
+            result: ChatResult = await (client.collect(messages) if stream else client.chat(messages))
+        except LlmError as e:
+            self.tokens += e.tokens  # 失败了也可能已经计费
+            raise
         self.tokens += result.tokens
         if result.finish_reason == "length":
             self.truncated = True
@@ -458,7 +460,7 @@ async def _chunk_notes(
 
     async def run(index: int, chunk: list[Line]) -> None:
         async with sem:
-            text = await usage.chat(client, notes_messages(brief, chunk, index, total), NOTES_TIMEOUT)
+            text = await usage.chat(client, notes_messages(brief, chunk, index, total))
         text = strip_fence(text)
         if not text:
             raise LlmError(f"第 {index} 段提要是空的")
@@ -518,7 +520,7 @@ async def generate_minutes(
         speakers: dict[str, Any] = dict(m.speakers or {})
         title = m.title
         duration = m.duration_ms or 0
-        budget = load_settings(db).meeting_context_chars
+        budget = client.cfg.context_chars or load_settings(db).meeting_context_chars
         m.minutes_state = "generating"
         db.commit()
     manager.publish(meeting_id)
@@ -539,7 +541,7 @@ async def generate_minutes(
             notes = await _chunk_notes(manager, meeting_id, client, brief, chunks, rev, usage, progress)
             progress(0.85)
             messages = minutes_messages(brief, tpl, instructions, notes=notes)
-        raw = await usage.chat(client, messages, MINUTES_TIMEOUT)
+        raw = await usage.chat(client, messages, stream=True)
         minutes = clean_minutes(raw, limit, speakers)
         if not minutes:
             raise LlmError("大模型返回的纪要是空的")

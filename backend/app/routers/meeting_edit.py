@@ -15,13 +15,13 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ..deps import CtxDep, DbDep, UserDep
-from ..llm import resolve_model
+from ..meeting.llm_config import resolve_meeting_llm
 from ..meeting.processing import OPS
 from ..meeting.schemas import MeetingDetailOut, MeetingOut, SegmentOut
 from ..meeting.speakers import lock_meeting, speaker_number
 from ..meeting.templates import TEMPLATE_IDS
 from ..models import Meeting, MeetingSegment, User
-from .meetings import detail_out, own_meeting
+from .meetings import detail_out, own_meeting, usable_preset
 
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
 
@@ -55,6 +55,8 @@ class AcceptGuessesIn(BaseModel):
 class OpIn(BaseModel):
     template: str | None = Field(default=None, max_length=32)
     extra_instructions: str | None = Field(default=None, max_length=2000)
+    # 换整理方案：之后的整理、纪要、对话都按新方案
+    llm_preset_id: int | None = None
 
     @field_validator("template")
     @classmethod
@@ -271,10 +273,18 @@ def start_op(meeting_id: str, op: str, user: UserDep, db: DbDep, ctx: CtxDep, bo
         raise HTTPException(409, "会议还没处理完，请稍后再试")
     if m.op:
         raise HTTPException(409, f"正在{OP_LABELS.get(m.op, '处理')}，请等它完成")
-    if resolve_model(db, ctx.secrets, m.model_id) is None:
-        raise HTTPException(400, "没有可用的大模型，请联系管理员")
     params: dict[str, Any] = {}
     values: dict[str, Any] = {"op": op}
+    preset_id = m.llm_preset_id
+    if body.llm_preset_id is not None:
+        preset = usable_preset(db, body.llm_preset_id)
+        assert preset is not None
+        preset_id = preset.id
+        # 和占住 op 写在同一条 UPDATE 里：撞上 409 时方案不会只改了一半
+        values.update(llm_preset_id=preset.id, model_name=preset.name)
+    _, reason = resolve_meeting_llm(db, ctx.secrets, preset_id, op)
+    if reason is not None:
+        raise HTTPException(400, reason)
     if op == "polish":
         params["previous"] = m.transcript_state
         values["transcript_state"] = "polishing"

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import DateTime, Engine, create_engine, event, text
+from sqlalchemy import Connection, DateTime, Engine, create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.types import TypeDecorator
 
@@ -58,7 +59,23 @@ def make_sessionmaker(engine: Engine) -> sessionmaker:
     return sessionmaker(engine, expire_on_commit=False)
 
 
-MIGRATIONS: list[tuple[int, list[str]]] = []
+Migration = Callable[[Connection], None]
+
+
+def add_column(table: str, column: str, ddl: str) -> Migration:
+    """给已有的表加一列；列已存在（新库由 create_all 直接建好）时什么也不做，所以重复执行也安全。"""
+
+    def run(conn: Connection) -> None:
+        columns = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+        if column not in columns:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
+
+    return run
+
+
+MIGRATIONS: list[tuple[int, list[Migration]]] = [
+    (1, [add_column("meetings", "llm_preset_id", "INTEGER")]),
+]
 
 
 def init_db(engine: Engine) -> None:
@@ -67,8 +84,8 @@ def init_db(engine: Engine) -> None:
     Base.metadata.create_all(engine)
     with engine.begin() as conn:
         version = conn.execute(text("PRAGMA user_version")).scalar() or 0
-        for target, statements in MIGRATIONS:
+        for target, steps in MIGRATIONS:
             if target > version:
-                for sql in statements:
-                    conn.execute(text(sql))
+                for step in steps:
+                    step(conn)
                 conn.execute(text(f"PRAGMA user_version = {target}"))

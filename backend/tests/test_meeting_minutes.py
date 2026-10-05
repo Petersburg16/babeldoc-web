@@ -8,7 +8,8 @@ import time
 from functools import partial
 from types import SimpleNamespace
 
-from app.llm import ChatResult, LlmClient, resolve_model
+from app.llm import ChatResult, LlmClient
+from app.meeting.llm_config import resolve_meeting_llm
 from app.meeting.minutes import (
     CHUNK_MAX_MS,
     SYSTEM_NOTES,
@@ -84,8 +85,8 @@ def run(app, client, mid: str, **kwargs):
     """在应用的事件循环上跑一次纪要生成；LlmClient 要在 install_fake_llm 之后建（它会换掉 manager.http）。"""
     manager = app.state.ctx.meetings
     with manager.Session() as db:
-        cfg = resolve_model(db, manager.secrets, None)
-    assert cfg is not None
+        cfg, reason = resolve_meeting_llm(db, manager.secrets, None, "minutes")
+    assert cfg is not None, reason
     progress: list[float] = []
     call = partial(generate_minutes, manager, mid, LlmClient(cfg, manager.http), on_progress=progress.append)
     warning = client.portal.call(partial(call, **kwargs))
@@ -196,6 +197,8 @@ def test_single_pass(app, admin_client):
     warning, progress = run(app, admin_client, mid)
     assert warning is None
     assert len(calls) == 1
+    assert calls[0]["stream"] is True and calls[0]["stream_options"] == {"include_usage": True}, "最后合成走流式"
+    assert "temperature" not in calls[0] and "reasoning_effort" not in calls[0]
     system, user = calls[0]["messages"]
     assert system["role"] == "system" and "不可信" in system["content"] and "未明确" in system["content"]
     assert "[00:05] [[S1]] 大家好，今天讨论数据集的问题。" in user["content"]
@@ -266,6 +269,7 @@ def test_chunked_generation_and_notes_cache(app, admin_client):
     notes_calls = [c for c in calls if "<transcript>" in user_message(c)]
     assert len(notes_calls) >= 3 and len(calls) == len(notes_calls) + 1
     assert all(c["messages"][0]["content"] == SYSTEM_NOTES for c in notes_calls)
+    assert not any(c.get("stream") for c in notes_calls) and calls[-1]["stream"] is True
     final = user_message(calls[-1])
     assert "<notes>" in final and "<transcript>" not in final
     assert "## 第 1 段（00:00–" in final and "第 1 段的要点 [00:00]" in final and "```" not in final
@@ -296,6 +300,24 @@ def test_chunked_generation_and_notes_cache(app, admin_client):
     assert len(calls) == before + len(notes_calls) + 1
     assert not cache.exists() and notes_path(manager, mid, 2).is_file()
     assert load(app, mid).minutes_rev == 2
+
+
+def test_model_context_chars_overrides_setting(app, admin_client):
+    """会议模型填了上下文预算就用它，不用系统设置里的。"""
+    mid = long_meeting(app)
+    calls = install_fake_llm(app, lambda messages, payload: "# 纪要")
+    assert run(app, admin_client, mid)[0] is None
+    assert len(calls) == 1, "系统设置的预算放得下整场会议"
+
+    model = admin_client.get("/api/admin/meeting-llm/models").json()[0]
+    resp = admin_client.patch(f"/api/admin/meeting-llm/models/{model['id']}", json={"context_chars": 10_000})
+    assert resp.status_code == 200 and resp.json()["context_chars"] == 10_000
+    with app.state.ctx.Session() as db:
+        db.get(Meeting, mid).transcript_rev = 2
+        db.commit()
+    calls.clear()
+    assert run(app, admin_client, mid)[0] is None
+    assert len(calls) >= 4 and "<notes>" in user_message(calls[-1]), "按模型的预算分段"
 
 
 def test_failure_returns_warning_and_keeps_old_minutes(app, admin_client):
@@ -369,7 +391,12 @@ def test_cancel_restores_state(app, admin_client):
     manager = app.state.ctx.meetings
 
     class SlowClient:
+        cfg = SimpleNamespace(context_chars=None)
+
         async def chat(self, messages, **kwargs):
+            await asyncio.sleep(30)
+
+        async def collect(self, messages, **kwargs):
             await asyncio.sleep(30)
 
     future = admin_client.portal.start_task_soon(partial(generate_minutes, manager, mid, SlowClient()))
@@ -389,7 +416,12 @@ def test_truncated_output_is_saved_with_warning(app, admin_client):
     mid = make_meeting(app, [(0, 5_000, "S1", "开始开会。")], duration_ms=MIN, tokens=8)
 
     class Truncating:
+        cfg = SimpleNamespace(context_chars=None)
+
         async def chat(self, messages, **kwargs):
+            raise AssertionError("最后合成纪要应走流式")
+
+        async def collect(self, messages, **kwargs):
             return ChatResult("# 纪要\n- 写到一半", 42, "length")
 
     manager = app.state.ctx.meetings

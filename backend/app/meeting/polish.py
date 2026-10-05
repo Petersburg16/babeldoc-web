@@ -249,9 +249,9 @@ async def _polish_chunk(
     error = LlmError("大模型的输出和逐字稿的句子对不上")
     for _ in range(ATTEMPTS):
         try:
-            result = await ask(manager, meeting_id, client, messages, temperature=0)
+            result = await ask(manager, meeting_id, client, messages)
         except LlmError as e:
-            if is_fatal(e):
+            if is_fatal(e) or e.no_retry:
                 return e
             error = e
             continue

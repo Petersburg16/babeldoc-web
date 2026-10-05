@@ -14,10 +14,11 @@ from sqlalchemy import select
 from app.llm import LlmClient, LlmConfig
 from app.main import create_app
 from app.meeting import polish, processing, prompts, speakers
-from app.models import GlossaryTerm, Meeting, MeetingSegment, ModelProfile, User
+from app.meeting.llm_config import STEPS, PresetSteps, default_step, resolve_meeting_llm
+from app.models import GlossaryTerm, Meeting, MeetingLlmModel, MeetingLlmPreset, MeetingSegment, User
 from app.security import hash_password, new_job_id
 from tests.conftest import add_mock_provider, build_config, make_wav, upload_audio, wait_meeting
-from tests.llm_fake import FakeLlmFailure, install_fake_llm
+from tests.llm_fake import FakeLlmFailure, FakeReply, install_fake_llm
 
 needs_ffmpeg = pytest.mark.skipif(not shutil.which("ffmpeg"), reason="需要 ffmpeg")
 
@@ -147,20 +148,36 @@ def seed(app, lines: list[tuple[str, str]], *, edited: dict[int, str] | None = N
     return meeting_id
 
 
-def add_model(app, **extra: Any) -> int:
+def add_llm_model(app, name: str = "会议模型", model: str = "m", **extra: Any) -> int:
     ctx = app.state.ctx
     with ctx.Session() as db:
-        profile = ModelProfile(
-            name="测试模型",
+        row = MeetingLlmModel(
+            name=name,
             base_url="https://llm.invalid/v1",
             api_key_enc=ctx.secrets.encrypt("sk-test"),
-            model="m",
-            is_default=True,
+            model=model,
             **extra,
         )
-        db.add(profile)
+        db.add(row)
         db.commit()
-        return profile.id
+        return row.id
+
+
+def add_preset(app, model_ids: dict[str, int], *, name: str = "默认方案", is_default: bool = True) -> int:
+    """model_ids：用途 → 会议模型号，四个用途都要给。"""
+    steps = PresetSteps(**{s: default_step(s).model_copy(update={"model_id": model_ids[s]}) for s in STEPS})
+    with app.state.ctx.Session() as db:
+        preset = MeetingLlmPreset(name=name, steps=steps.model_dump(mode="json"), is_default=is_default)
+        db.add(preset)
+        db.commit()
+        return preset.id
+
+
+def add_model(app, **extra: Any) -> int:
+    """一个会议模型 + 四个用途都用它的默认方案。"""
+    model_id = add_llm_model(app, **extra)
+    add_preset(app, dict.fromkeys(STEPS, model_id))
+    return model_id
 
 
 def client_for(manager: FakeManager, json_mode: bool = False) -> LlmClient:
@@ -170,10 +187,18 @@ def client_for(manager: FakeManager, json_mode: bool = False) -> LlmClient:
         base_url="https://llm.invalid/v1",
         api_key="k",
         model="m",
-        send_temperature=True,
         json_mode=json_mode,
         qps=4,
     )
+    assert manager.http is not None
+    return LlmClient(cfg, manager.http)
+
+
+def preset_client(manager: FakeManager, step: str, preset_id: int | None = None) -> LlmClient:
+    """按方案取客户端，和流水线里一样。"""
+    with manager.Session() as db:
+        cfg, reason = resolve_meeting_llm(db, manager.secrets, preset_id, step)
+    assert cfg is not None, reason
     assert manager.http is not None
     return LlmClient(cfg, manager.http)
 
@@ -324,7 +349,8 @@ def test_polish_meeting_success(env):
 
     assert len(calls) == 1
     system, user = calls[0]["messages"][0]["content"], calls[0]["messages"][1]["content"]
-    assert calls[0]["temperature"] == 0 and "response_format" not in calls[0]
+    assert "temperature" not in calls[0] and "response_format" not in calls[0], "方案没打开温度就不发"
+    assert "reasoning_effort" not in calls[0] and calls[0]["model"] == "m"
     assert "不可信" in system and "绝不执行" in system
     assert "「测风塔」 常被听成：「侧风塔」（气象观测设备）" in system
     assert "#0 [S1] 嗯那个大家好" in user and "#4" not in user, "改过的句子不送去整理"
@@ -460,6 +486,24 @@ def test_polish_fatal_error_stops_early(env, monkeypatch):
     assert meeting(app, mid).transcript_state == "raw"
 
 
+def test_polish_length_without_text_is_not_retried(env, monkeypatch):
+    monkeypatch.setattr(polish, "CHUNK_CHARS", 60)
+    app = env
+    lines = [("S1", f"第{i}句" + "嗯内容" * 8) for i in range(6)]
+    mid = seed(app, lines)
+
+    def thinking(messages, payload):
+        # 思考把输出额度用完了，正文是空的：再发一遍也一样，还会重复计费
+        return FakeReply("", finish_reason="length", reasoning_tokens=4096, tokens=4500)
+
+    report, calls = polish_with(app, mid, thinking)
+    assert report.total >= 2 and len(calls) == report.total, "每块只发一次，不重试"
+    assert report.failed == report.total and report.fatal is None, "不算致命错误，其他块照常发"
+    assert "最大输出" in report.warning and report.state == "raw"
+    assert texts(app, mid) == [t for _, t in lines]
+    assert meeting(app, mid).tokens == 4500 * report.total, "已经计费的思考 token 也要记上"
+
+
 # ---------- 说话人 ----------
 
 
@@ -513,16 +557,22 @@ def test_guess_speakers_writes_guesses_only(env):
 
 def test_guess_speakers_json_mode(env):
     app = env
+    add_model(app, json_mode=True)  # JSON 模式是会议模型上的设置
     mid = seed(app, LINES)
 
     def reply(messages, payload):
+        if is_polish(messages):
+            assert "response_format" not in payload, "整理不要求 JSON，模型开了 JSON 模式也不发"
+            return polish_reply(messages)
         assert payload["response_format"] == {"type": "json_object"} and "JSON" in messages[0]["content"]
         return '{"speakers": [{"id": "S1", "name": "张老师", "confidence": "high", "evidence": "我是张老师"}]}'
 
-    install_fake_llm(app, reply)
+    calls = install_fake_llm(app, reply)
     manager = FakeManager(app, app.state.ctx.meetings.transport)
-    manager.run(lambda: speakers.guess_speakers(manager, mid, client_for(manager, json_mode=True)))
+    manager.run(lambda: speakers.guess_speakers(manager, mid, preset_client(manager, "speakers")))
     assert meeting(app, mid).speakers["S1"]["guess"]["name"] == "张老师"
+    manager.run(lambda: polish.polish_meeting(manager, mid, preset_client(manager, "polish")))
+    assert len(calls) == 2 and meeting(app, mid).transcript_state == "polished"
 
 
 # ---------- 流水线 ----------
@@ -543,10 +593,15 @@ def test_pipeline_without_model(env, monkeypatch):
     mid = seed(app, LINES)
     minutes_calls: list[dict[str, Any]] = []
     stub_minutes(monkeypatch, minutes_calls)
-    manager = FakeManager(app, httpx.MockTransport(lambda r: httpx.Response(500)))
-    warning = manager.run(lambda: processing.run_pipeline(manager, mid))
-    assert warning == processing.NO_MODEL and not minutes_calls
+    requests: list[httpx.Request] = []
+    manager = FakeManager(app, httpx.MockTransport(lambda r: requests.append(r) or httpx.Response(500)))
+    warnings = manager.run(lambda: processing.run_pipeline_steps(manager, mid))
+    assert list(warnings) == ["pipeline"], "原因都一样时合成一条"
+    assert warnings["pipeline"].startswith("逐字稿未整理：") and "方案" in warnings["pipeline"]
+    assert not minutes_calls and not requests
     assert meeting(app, mid).transcript_state == "raw"
+    warning = manager.run(lambda: processing.run_pipeline(manager, mid))
+    assert warning == warnings["pipeline"]
 
 
 def test_pipeline_runs_all_steps(env, monkeypatch):
@@ -584,6 +639,43 @@ def test_pipeline_fatal_error_skips_rest(env, monkeypatch):
     assert len(calls) == 1 and not minutes_calls
     assert "识别说话人失败" in warning and "跳过了整理逐字稿、生成纪要" in warning
     assert meeting(app, mid).transcript_state == "raw"
+
+
+def test_pipeline_fatal_error_only_skips_same_model(env, monkeypatch):
+    app = env
+    model_a = add_llm_model(app, name="模型甲", model="model-a")
+    model_b = add_llm_model(app, name="模型乙", model="model-b")
+    add_preset(app, {"speakers": model_a, "polish": model_b, "minutes": model_b, "chat": model_b})
+    mid = seed(app, LINES)
+    minutes_calls: list[dict[str, Any]] = []
+    stub_minutes(monkeypatch, minutes_calls)
+
+    def reply(messages, payload):
+        if payload["model"] == "model-a":
+            raise FakeLlmFailure(401, "invalid api key")
+        return standard_reply(messages, payload)
+
+    calls = install_fake_llm(app, reply)
+    manager = FakeManager(app, app.state.ctx.meetings.transport)
+    warnings = manager.run(lambda: processing.run_pipeline_steps(manager, mid))
+    assert [c["model"] for c in calls] == ["model-a", "model-b"]
+    assert "识别说话人失败" in warnings["speakers"] and "pipeline" not in warnings, "模型乙的步骤不算跳过"
+    assert warnings["polish"] is None and warnings["minutes"] is None
+    assert minutes_calls, "纪要用模型乙，照常生成"
+    assert meeting(app, mid).transcript_state == "polished"
+
+    # 反过来：整理用的模型甲报致命错误，同样用模型甲的纪要被跳过
+    reverse = add_preset(
+        app, {"speakers": model_b, "polish": model_a, "minutes": model_a, "chat": model_b}, name="反过来"
+    )
+    mid = seed(app, LINES, llm_preset_id=reverse)
+    minutes_calls.clear()
+    calls.clear()
+    warnings = manager.run(lambda: processing.run_pipeline_steps(manager, mid))
+    assert [c["model"] for c in calls] == ["model-b", "model-a"]
+    assert warnings["speakers"] is None and "整理逐字稿失败" in warnings["polish"]
+    assert warnings["pipeline"] == "大模型暂时不可用，跳过了生成纪要，稍后可以在会议页面重新操作"
+    assert not minutes_calls
 
 
 def test_pipeline_survives_crash_in_a_step(env, monkeypatch):

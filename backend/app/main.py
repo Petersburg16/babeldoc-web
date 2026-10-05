@@ -21,6 +21,7 @@ from .events import EventBus
 from .meeting.manager import MeetingManager
 from .routers import (
     admin,
+    admin_meeting_llm,
     admin_meetings,
     auth,
     jobs,
@@ -151,6 +152,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         public,
         stream,
         admin_meetings,
+        admin_meeting_llm,
         admin,
     ):
         app.include_router(module.router)

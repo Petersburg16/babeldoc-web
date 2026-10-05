@@ -234,7 +234,7 @@ async def guess_speakers(manager: MeetingManager, meeting_id: str, client: LlmCl
         {"role": "system", "content": prompts.speakers_system(json_mode)},
         {"role": "user", "content": prompts.speakers_user(candidates, known, excerpt)},
     ]
-    result = await ask(manager, meeting_id, client, messages, temperature=0, json_object=json_mode)
+    result = await ask(manager, meeting_id, client, messages, json_object=json_mode)
     guesses = parse_guesses(result.text, set(candidates))
     await asyncio.to_thread(_store, manager, meeting_id, set(candidates), guesses)
     manager.publish(meeting_id)

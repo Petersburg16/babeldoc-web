@@ -51,5 +51,6 @@ GPL-3.0 与 AGPL-3.0 第 13 条允许与本项目组合发布；对应源码见�
 | [python-docx](https://github.com/python-openxml/python-docx) | MIT | 导出 Word |
 | [lxml](https://github.com/lxml/lxml) | BSD-3-Clause | python-docx 的依赖 |
 | [OpenTypeless](https://github.com/tover0314-w/opentypeless) | MIT | 逐字稿整理提示词的规则参考了它的 `BASE_PROMPT`、`THOUGHT_AWARE_RULES`，中文提示词为本项目重新编写，没有复制代码 |
+| [Cherry Studio](https://github.com/CherryHQ/cherry-studio) | AGPL-3.0 | 会议大模型参数的规则参考了它的 `packages/provider-registry`：OpenAI 系列模型的思考档位表（`backend/app/meeting/llm_config.py` 的 `EFFORT_RULES`）、档位就近映射、温度等参数的开关与自定义参数的合并方式；代码为本项目重新编写 |
 
 语音识别由阿里云百炼、阿里云通义听悟、腾讯云的在线接口完成，本项目只按官方文档调用其 HTTP 接口，不包含它们的 SDK 或代码。

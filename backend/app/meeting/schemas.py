@@ -6,9 +6,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from ..models import AsrProvider, GlossaryTerm, Meeting, MeetingMessage, MeetingSegment
+from ..models import AsrProvider, GlossaryTerm, Meeting, MeetingLlmModel, MeetingMessage, MeetingSegment
+from ..schemas import BaseUrl
 from ..security import SecretBox, mask_secret
 from .asr import adapter_class
+from .llm_config import EFFORT_ORDER, PresetSteps, builtin_efforts, normalize_levels
 from .templates import TEMPLATE_IDS
 
 
@@ -42,6 +44,7 @@ class MeetingOut(BaseModel):
     provider_name: str
     model_id: int | None
     model_name: str
+    llm_preset_id: int | None
     template: str
     extra_instructions: str
     expected_speakers: int | None
@@ -86,6 +89,7 @@ class MeetingOut(BaseModel):
             provider_name=m.provider_name,
             model_id=m.model_id,
             model_name=m.model_name,
+            llm_preset_id=m.llm_preset_id,
             template=m.template,
             extra_instructions=m.extra_instructions,
             expected_speakers=m.expected_speakers,
@@ -161,7 +165,7 @@ class MeetingCreate(BaseModel):
     size: int = Field(gt=0)
     title: str = Field(default="", max_length=200)
     provider_id: int | None = None
-    model_id: int | None = None
+    llm_preset_id: int | None = None
     template: str = Field(default="", max_length=32)
     extra_instructions: str = Field(default="", max_length=2000)
     expected_speakers: int | None = Field(default=None, ge=1, le=50)
@@ -192,7 +196,7 @@ class MeetingPatch(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     template: str | None = Field(default=None, max_length=32)
     extra_instructions: str | None = Field(default=None, max_length=2000)
-    model_id: int | None = None
+    llm_preset_id: int | None = None
 
     @field_validator("template")
     @classmethod
@@ -220,6 +224,13 @@ class TemplateOut(BaseModel):
     description: str
 
 
+class PresetPublicOut(BaseModel):
+    id: int
+    name: str
+    description: str
+    is_default: bool
+
+
 class MeetingOptionsOut(BaseModel):
     providers: list[ProviderPublicOut]
     templates: list[TemplateOut]
@@ -228,6 +239,7 @@ class MeetingOptionsOut(BaseModel):
     max_audio_hours: int
     retention_days: int
     split_supported: bool
+    presets: list[PresetPublicOut] = []
 
 
 # ---------- 管理后台 ----------
@@ -361,3 +373,174 @@ class GlossaryTermIn(BaseModel):
             if item and item not in out:
                 out.append(item)
         return out
+
+
+# ---------- 管理后台：会议用的大模型与整理方案 ----------
+
+
+class LlmModelAdminOut(BaseModel):
+    id: int
+    name: str
+    description: str
+    base_url: str
+    model: str
+    effort_levels: list[str]
+    builtin_effort_levels: list[str]
+    qps: int
+    json_mode: bool
+    context_chars: int | None
+    enabled: bool
+    sort_order: int
+    api_key_set: bool
+    api_key_masked: str
+    used_by: list[str]  # 用到它的方案名
+    updated_at: datetime
+
+    @classmethod
+    def of(cls, m: MeetingLlmModel, api_key: str, used_by: list[str]) -> LlmModelAdminOut:
+        return cls(
+            id=m.id,
+            name=m.name,
+            description=m.description,
+            base_url=m.base_url,
+            model=m.model,
+            effort_levels=normalize_levels(m.effort_levels or []),
+            builtin_effort_levels=builtin_efforts(m.model),
+            qps=m.qps,
+            json_mode=m.json_mode,
+            context_chars=m.context_chars,
+            enabled=m.enabled,
+            sort_order=m.sort_order,
+            api_key_set=bool(api_key),
+            api_key_masked=mask_secret(api_key),
+            used_by=used_by,
+            updated_at=m.updated_at,
+        )
+
+
+def _levels(v: list[str] | None) -> list[str] | None:
+    if v is None:
+        return None
+    unknown = [x for x in v if str(x).strip().lower() not in EFFORT_ORDER]
+    if unknown:
+        raise ValueError(f"未知的思考档位：{'、'.join(map(str, unknown))}")
+    return normalize_levels(v)
+
+
+class LlmModelIn(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    description: str = Field(default="", max_length=255)
+    base_url: BaseUrl = ""
+    api_key: str = Field(default="", max_length=512)
+    # 从翻译模型复制接口地址和 Key（Key 在服务器端复制，不经过浏览器）；自己填了的以填的为准
+    copy_from_model_id: int | None = None
+    model: str = Field(min_length=1, max_length=128)
+    effort_levels: list[str] | None = None  # None：按模型名用内置档位表
+    qps: int = Field(default=3, ge=1, le=100)
+    json_mode: bool = False
+    context_chars: int | None = Field(default=None, ge=10_000, le=2_000_000)
+    enabled: bool = True
+    sort_order: int = 0
+    # 顺带建一个四个用途都用这个模型的方案（还没有任何方案时会成为默认方案）
+    create_preset: bool = False
+
+    @field_validator("effort_levels")
+    @classmethod
+    def _effort_levels(cls, v: list[str] | None) -> list[str] | None:
+        return _levels(v)
+
+
+class LlmModelPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=64)
+    description: str | None = Field(default=None, max_length=255)
+    base_url: BaseUrl | None = None
+    api_key: str | None = Field(default=None, max_length=512)
+    clear_api_key: bool = False
+    copy_from_model_id: int | None = None
+    model: str | None = Field(default=None, min_length=1, max_length=128)
+    effort_levels: list[str] | None = None
+    qps: int | None = Field(default=None, ge=1, le=100)
+    json_mode: bool | None = None
+    context_chars: int | None = Field(default=None, ge=10_000, le=2_000_000)
+    enabled: bool | None = None
+    sort_order: int | None = None
+
+    @field_validator("effort_levels")
+    @classmethod
+    def _effort_levels(cls, v: list[str] | None) -> list[str] | None:
+        return _levels(v)
+
+
+class LlmProbeIn(BaseModel):
+    """拉取模型列表、检测思考档位：用表单里填的地址和 Key；Key 留空时用已保存的会议模型或翻译模型的 Key。"""
+
+    base_url: BaseUrl = ""
+    api_key: str = Field(default="", max_length=512)
+    model: str = Field(default="", max_length=128)
+    model_id: int | None = None
+    copy_from_model_id: int | None = None
+
+
+class EffortDetectOut(BaseModel):
+    detected: list[str]  # 中转报错里列出的档位
+    builtin: list[str]  # 内置表
+    suggested: list[str]  # 建议填的
+    message: str
+
+
+class LlmTestIn(BaseModel):
+    effort: str = "default"
+
+    @field_validator("effort")
+    @classmethod
+    def _effort(cls, v: str) -> str:
+        # 不认识的档位在这里拦成 422；放到接口里再建 StepConfig 会变成 500
+        v = (v or "default").strip().lower()
+        if v != "default" and v not in EFFORT_ORDER:
+            raise ValueError(f"未知的思考强度：{v}")
+        return v
+
+
+class LlmTestOut(BaseModel):
+    ok: bool
+    latency_ms: int | None = None
+    reply: str | None = None
+    error: str | None = None
+    tokens: int = 0
+    reasoning_tokens: int = 0
+    finish_reason: str | None = None
+    sent: dict[str, Any] = Field(default_factory=dict)  # 实际发出的参数（不含消息）
+
+
+class PresetAdminOut(BaseModel):
+    id: int
+    name: str
+    description: str
+    steps: PresetSteps
+    is_default: bool
+    enabled: bool
+    sort_order: int
+    problems: list[str]  # 例如某个用途的模型被停用
+    updated_at: datetime
+
+
+class PresetIn(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    description: str = Field(default="", max_length=255)
+    steps: PresetSteps
+    is_default: bool = False
+    enabled: bool = True
+    sort_order: int = 0
+
+
+class PresetPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=64)
+    description: str | None = Field(default=None, max_length=255)
+    steps: PresetSteps | None = None
+    is_default: bool | None = None
+    enabled: bool | None = None
+    sort_order: int | None = None
+
+
+class PresetTestIn(BaseModel):
+    step: str = Field(pattern="^(speakers|polish|minutes|chat)$")

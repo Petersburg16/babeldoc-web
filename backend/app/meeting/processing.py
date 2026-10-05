@@ -12,9 +12,10 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import update
 
-from ..llm import LlmClient, LlmError, resolve_model
+from ..llm import LlmClient, LlmError
 from ..models import Meeting
 from . import minutes, polish, speakers
+from .llm_config import resolve_meeting_llm
 from .llmcall import is_fatal
 
 if TYPE_CHECKING:
@@ -23,23 +24,23 @@ if TYPE_CHECKING:
 log = logging.getLogger("bdw.meetings.processing")
 
 OPS = ("speakers", "polish", "minutes")
-NO_MODEL = "没有可用的大模型，逐字稿未整理"
 # 进度区间（0–1，由 manager.set_progress 映射到整体进度的 60–100）
 SPEAKERS_SPAN = (0.0, 0.1)
 POLISH_SPAN = (0.1, 0.7)
 MINUTES_SPAN = (0.7, 1.0)
 
 
-def _client(manager: MeetingManager, meeting_id: str) -> LlmClient | None:
+def _client(manager: MeetingManager, meeting_id: str, step: str) -> tuple[LlmClient | None, str | None]:
+    """按会议的整理方案取这个用途的客户端；返回 (客户端, None) 或 (None, 原因)。会议已删除时返回 (None, None)。"""
     with manager.Session() as db:
         m = db.get(Meeting, meeting_id)
         if m is None or m.deleted_at is not None:
-            return None
-        cfg = resolve_model(db, manager.secrets, m.model_id)
+            return None, None
+        cfg, reason = resolve_meeting_llm(db, manager.secrets, m.llm_preset_id, step)
     if cfg is None:
-        return None
+        return None, reason
     assert manager.http is not None
-    return LlmClient(cfg, manager.http)
+    return LlmClient(cfg, manager.http), None
 
 
 def _reporter(
@@ -61,25 +62,41 @@ async def run_pipeline(manager: MeetingManager, meeting_id: str) -> str | None:
 
 
 async def run_pipeline_steps(manager: MeetingManager, meeting_id: str) -> dict[str, str | None]:
-    """同 run_pipeline，但按步骤返回警告（键为 speakers / polish / minutes / pipeline），便于以后单独清除。"""
-    client = _client(manager, meeting_id)
-    if client is None:
-        return {"pipeline": NO_MODEL}
+    """同 run_pipeline，但按步骤返回警告（键为 speakers / polish / minutes / pipeline），便于以后单独清除。
+
+    每个步骤按整理方案用各自的模型；某个模型报“致命”错误（密钥无效、模型不存在、连不上）后，
+    只跳过后面用同一个模型的步骤，用别的模型的步骤照常进行。
+    """
     warnings: dict[str, str | None] = {}
     steps = (
         ("speakers", SPEAKERS_SPAN, "识别说话人"),
         ("polish", POLISH_SPAN, "整理逐字稿"),
         ("minutes", MINUTES_SPAN, "生成纪要"),
     )
-    for index, (step, span, label) in enumerate(steps):
+    dead: set[int] = set()
+    skipped: list[str] = []
+    unavailable: dict[str, str] = {}
+    for step, span, label in steps:
+        client, reason = _client(manager, meeting_id, step)
+        if client is None:
+            if reason is None:  # 会议已删除
+                return warnings
+            unavailable[step] = reason
+            warnings[step] = f"{label}没有进行：{reason}"
+            continue
+        if client.cfg.profile_id in dead:
+            skipped.append(label)
+            continue
         manager.set_progress(meeting_id, span[0], step)
         warning, fatal = await _step(manager, meeting_id, client, step, span, label, {})
         warnings[step] = warning
         if fatal:
-            skipped = "、".join(s[2] for s in steps[index + 1 :])
-            if skipped:
-                warnings["pipeline"] = f"大模型暂时不可用，跳过了{skipped}，稍后可以在会议页面重新操作"
-            break
+            dead.add(client.cfg.profile_id)
+    if skipped:
+        warnings["pipeline"] = f"大模型暂时不可用，跳过了{'、'.join(skipped)}，稍后可以在会议页面重新操作"
+    if len(unavailable) == len(steps) and len(set(unavailable.values())) == 1:
+        # 原因都一样（多半是还没有配置方案）：合成一条，别重复三遍
+        warnings = {"pipeline": f"逐字稿未整理：{next(iter(unavailable.values()))}"}
     _settle_minutes(manager, meeting_id)
     return warnings
 
@@ -94,9 +111,9 @@ async def run_op(manager: MeetingManager, meeting_id: str, op: str, params: dict
     try:
         if op not in OPS:
             return f"未知的操作：{op}"
-        client = _client(manager, meeting_id)
+        client, reason = _client(manager, meeting_id, op)
         if client is None:
-            return "没有可用的大模型，无法处理"
+            return f"无法处理：{reason}" if reason else None
         label = {"speakers": "识别说话人", "polish": "整理逐字稿", "minutes": "生成纪要"}[op]
         manager.set_progress(meeting_id, 0.0, op)
         warning, _ = await _step(manager, meeting_id, client, op, (0.0, 1.0), label, params)

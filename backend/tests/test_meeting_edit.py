@@ -12,7 +12,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.meeting import processing
-from app.models import Meeting, MeetingSegment, ModelProfile, User
+from app.models import Meeting, MeetingLlmModel, MeetingLlmPreset, MeetingSegment, ModelProfile, User
+from app.routers import meeting_edit
 from app.security import new_job_id
 from tests.conftest import ADMIN, add_user, login
 from tests.llm_fake import install_fake_llm
@@ -239,12 +240,76 @@ def test_op_conflicts(app, admin_client):
     assert admin_client.post(f"/api/meetings/{mid}/ops/translate", json={}).status_code == 404
     assert admin_client.post(f"/api/meetings/{mid}/ops/minutes", json={"template": "x"}).status_code == 422
     with app.state.ctx.Session() as db:
-        for profile in db.scalars(select(ModelProfile)):
-            profile.enabled = False
+        for model in db.scalars(select(MeetingLlmModel)):
+            model.enabled = False
         db.commit()
     resp = admin_client.post(f"/api/meetings/{mid}/ops/polish", json={})
-    assert resp.status_code == 400 and "大模型" in resp.json()["detail"]
+    reason = resp.json()["detail"]
+    assert resp.status_code == 400 and "“整理逐字稿”" in reason and "已停用" in reason, "写明哪个方案的哪个用途"
     assert detail(admin_client, mid)["op"] is None
+    with app.state.ctx.Session() as db:
+        for preset in db.scalars(select(MeetingLlmPreset)):
+            preset.enabled = False
+        db.commit()
+    resp = admin_client.post(f"/api/meetings/{mid}/ops/minutes", json={})
+    assert resp.status_code == 400 and "还没有配置" in resp.json()["detail"]
+    m = detail(admin_client, mid)
+    assert m["op"] is None and m["minutes_state"] == "ready"
+
+
+def test_op_switch_preset_is_atomic(app, admin_client, monkeypatch):
+    resp = admin_client.post(
+        "/api/admin/meeting-llm/models",
+        json={"name": "精细", "base_url": "https://example.invalid/v1", "api_key": "sk-x", "model": "gpt-6-astra"},
+    )
+    assert resp.status_code == 201, resp.text
+    fine_model = resp.json()["id"]
+    steps = {
+        s: {"model_id": fine_model, "effort": "high" if s == "minutes" else "default"}
+        for s in ("speakers", "polish", "minutes", "chat")
+    }
+    resp = admin_client.post("/api/admin/meeting-llm/presets", json={"name": "精细方案", "steps": steps})
+    assert resp.status_code == 201, resp.text
+    fine = resp.json()
+    assert fine["is_default"] is False, "已有默认方案时新方案不抢默认"
+
+    # 已经在跑别的操作：直接 409，方案不变
+    busy = seed(app, op="minutes")
+    resp = admin_client.post(f"/api/meetings/{busy}/ops/polish", json={"llm_preset_id": fine["id"]})
+    assert resp.status_code == 409
+    m = detail(admin_client, busy)
+    assert m["llm_preset_id"] is None and m["model_name"] == "" and m["op"] == "minutes"
+
+    # 检查都通过之后、占住操作之前被别的请求抢先：方案也不能只改一半
+    mid = seed(app)
+    real = meeting_edit.resolve_meeting_llm
+
+    def racing(db, box, preset_id, step):
+        with app.state.ctx.Session() as other:
+            other.get(Meeting, mid).op = "speakers"
+            other.commit()
+        return real(db, box, preset_id, step)
+
+    monkeypatch.setattr(meeting_edit, "resolve_meeting_llm", racing)
+    resp = admin_client.post(f"/api/meetings/{mid}/ops/polish", json={"llm_preset_id": fine["id"]})
+    assert resp.status_code == 409 and "正在处理其他操作" in resp.json()["detail"], "由占住操作的那条 UPDATE 拦下"
+    monkeypatch.setattr(meeting_edit, "resolve_meeting_llm", real)
+    with app.state.ctx.Session() as db:
+        m = db.get(Meeting, mid)
+        assert m.llm_preset_id is None and m.model_name == "" and m.transcript_state == "raw"
+        m.op = None
+        db.commit()
+
+    assert admin_client.post(f"/api/meetings/{mid}/ops/polish", json={"llm_preset_id": 9999}).status_code == 400
+    assert detail(admin_client, mid)["llm_preset_id"] is None
+
+    calls = install_fake_llm(app, lambda messages, payload: polish_reply(messages))
+    resp = admin_client.post(f"/api/meetings/{mid}/ops/polish", json={"llm_preset_id": fine["id"]})
+    assert resp.status_code == 202, resp.text
+    assert resp.json()["llm_preset_id"] == fine["id"] and resp.json()["model_name"] == "精细方案"
+    m = wait_op(admin_client, mid)
+    assert m["transcript_state"] == "polished" and m["llm_preset_id"] == fine["id"]
+    assert calls and all(c["model"] == "gpt-6-astra" and "reasoning_effort" not in c for c in calls)
 
 
 def test_op_polish_keeps_manual_edits(app, admin_client):
