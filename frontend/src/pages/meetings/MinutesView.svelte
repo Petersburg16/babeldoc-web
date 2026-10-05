@@ -4,13 +4,12 @@
   import { copyText, dateTime, relativeTime } from '../../lib/format';
   import { CircleAlert, Copy, LoaderCircle, RefreshCw, Sparkles, TriangleAlert } from '../../lib/icons';
   import { meetingApi } from '../../lib/meeting/api';
-  import { isActive, stageLabel } from '../../lib/meeting/format';
+  import { fillSpeakers, isActive, stageLabel } from '../../lib/meeting/format';
   import { NotebookPen } from '../../lib/meeting/icons';
   import { withSpeakerNames } from '../../lib/meeting/markdown';
   import type { MeetingDetail, MeetingOp } from '../../lib/meeting/types';
   import { meetings } from '../../lib/meetings.svelte';
   import { toast } from '../../lib/toast.svelte';
-  import ExportMenu from './ExportMenu.svelte';
   import MeetingMarkdown from './MeetingMarkdown.svelte';
   import RegenerateModal from './RegenerateModal.svelte';
 
@@ -92,7 +91,6 @@
             <Copy class="size-3.5" /> 复制
           </button>
         {/if}
-        <ExportMenu {meeting} />
       </div>
     </div>
   {/if}
@@ -129,7 +127,9 @@
         <CircleAlert class="mt-0.5 size-4 shrink-0" />
         <div class="min-w-0 break-words">
           <p class="font-medium">{meeting.minutes_md ? '纪要重新生成失败，下面仍是之前的版本' : '纪要生成失败'}</p>
-          {#if meeting.warning}<p class="mt-0.5 whitespace-pre-line opacity-90">{meeting.warning}</p>{/if}
+          {#if meeting.warning}
+            <p class="mt-0.5 whitespace-pre-line opacity-90">{fillSpeakers(meeting.warning, meeting.speakers)}</p>
+          {/if}
         </div>
       </div>
       <div class="mt-3 flex flex-wrap justify-end gap-2">

@@ -20,8 +20,19 @@ from tests.conftest import (
     upload_audio,
     wait_meeting,
 )
+from tests.llm_fake import FakeLlmFailure, install_fake_llm
 
 pytestmark = pytest.mark.skipif(not shutil.which("ffmpeg"), reason="需要 ffmpeg")
+
+
+@pytest.fixture(autouse=True)
+def _llm_unavailable(app):
+    """这些测试只关心上传和识别：大模型一律返回 401，整理步骤立即放弃，不去连真实地址。"""
+
+    def reply(messages, payload):
+        raise FakeLlmFailure(401, "fake: no llm in flow tests")
+
+    install_fake_llm(app, reply)
 
 
 def test_meeting_runs_to_done(app, admin_client):

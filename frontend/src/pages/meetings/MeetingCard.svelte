@@ -16,7 +16,7 @@
     TriangleAlert,
   } from '../../lib/icons';
   import { meetingApi } from '../../lib/meeting/api';
-  import { errorKindLabel, isActive, spoken, stageLabel, statusLabel } from '../../lib/meeting/format';
+  import { errorKindLabel, fillSpeakers, isActive, spoken, stageLabel, statusLabel } from '../../lib/meeting/format';
   import type { Meeting, MeetingStatus } from '../../lib/meeting/types';
   import { meetings } from '../../lib/meetings.svelte';
   import { toast } from '../../lib/toast.svelte';
@@ -229,7 +229,7 @@
       {#if m.warning && m.status !== 'failed'}
         <p class="mt-2 flex items-start gap-1.5 rounded-lg bg-warn-soft px-2.5 py-1.5 text-[12.5px] text-warn-ink">
           <TriangleAlert class="mt-0.5 size-3.5 shrink-0" />
-          <span class="min-w-0 break-words">{m.warning}</span>
+          <span class="min-w-0 break-words">{fillSpeakers(m.warning, m.speakers)}</span>
         </p>
       {/if}
       {#if (m.status === 'failed' || m.status === 'canceled') && expiresIn !== null}

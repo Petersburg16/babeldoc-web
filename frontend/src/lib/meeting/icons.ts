@@ -1,4 +1,5 @@
 // 会议记录专用的图标：单独一个模块，只在打开会议记录时才下载。通用图标从 ../icons 导入。
+export { default as ArrowLeft } from '@lucide/svelte/icons/arrow-left';
 export { default as BookA } from '@lucide/svelte/icons/book-a';
 export { default as Captions } from '@lucide/svelte/icons/captions';
 export { default as ClipboardCopy } from '@lucide/svelte/icons/clipboard-copy';
@@ -8,6 +9,7 @@ export { default as FileType } from '@lucide/svelte/icons/file-type';
 export { default as Headphones } from '@lucide/svelte/icons/headphones';
 export { default as History } from '@lucide/svelte/icons/history';
 export { default as ListChecks } from '@lucide/svelte/icons/list-checks';
+export { default as LocateFixed } from '@lucide/svelte/icons/locate-fixed';
 export { default as Merge } from '@lucide/svelte/icons/merge';
 export { default as MessagesSquare } from '@lucide/svelte/icons/messages-square';
 export { default as Mic } from '@lucide/svelte/icons/mic';

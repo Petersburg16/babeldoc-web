@@ -33,7 +33,7 @@ from ..models import AsrProvider, GlossaryTerm, Meeting, MeetingSegment
 from ..security import SecretBox
 from ..settings_store import load_settings
 from . import processing, split
-from .align import MergedSegment, merge_parts
+from .align import Alignment, MergedSegment, align_parts
 from .asr import adapter_class
 from .asr.base import AsrAdapter, AsrError, SubmitOptions
 from .media import AUDIO_NAME, FfmpegProcess, MediaError, probe, tone, transcode_args
@@ -373,9 +373,12 @@ class MeetingManager:
                 "input",
             )
         self._progress(meeting_id, TRANSCODE_SPAN[1], "split")
-        planned = await asyncio.to_thread(
-            split.plan_parts, self.config, audio, duration_ms, cap.max_part_seconds * 1000
-        )
+        try:
+            planned = await asyncio.to_thread(
+                split.plan_parts, self.config, audio, duration_ms, cap.max_part_seconds * 1000
+            )
+        except MediaError as e:
+            raise StageError(str(e), "internal") from e
         return [_new_part(int(p["index"]), int(p["offset_ms"]), int(p["duration_ms"]), str(p["file"])) for p in planned]
 
     # ---------- 识别 ----------
@@ -444,10 +447,11 @@ class MeetingManager:
             raise eg.exceptions[0] from None
 
         self._progress(meeting_id, ASR_SPAN[1], "asr_merge")
-        merged, notes = await asyncio.to_thread(self._merge_results, meeting_id, adapter)
+        alignment = await asyncio.to_thread(self._merge_results, meeting_id, adapter)
+        merged, notes = alignment.segments, alignment.notes
         if not merged:
             raise StageError("识别结果是空的：录音里可能没有人声，或音量太小", "input")
-        await asyncio.to_thread(self._store_segments, meeting_id, merged)
+        await asyncio.to_thread(self._store_segments, meeting_id, merged, alignment.merge_hints)
         with self.Session() as db:
             m = db.get(Meeting, meeting_id)
             assert m is not None
@@ -460,9 +464,12 @@ class MeetingManager:
                 m.warning = _join(m.warning, "；".join(notes))
             src = self.meeting_dir(m.id) / source_name(m.filename)
             db.commit()
-        # 识别成功后原件就用不到了（回听用转好的 audio.mp3），WAV 原件可能上 GB
+        # 识别成功后原件和切段文件就用不到了（回听用转好的 audio.mp3），WAV 原件可能上 GB
         with contextlib.suppress(OSError):
             src.unlink()
+        for part_file in self.meeting_dir(meeting_id).glob(split.PART_PATTERN):
+            with contextlib.suppress(OSError):
+                part_file.unlink()
         self.publish(meeting_id)
 
     async def _run_part(
@@ -486,7 +493,7 @@ class MeetingManager:
             )
             url = self.audio_url(base, meeting_id, index, token)
             try:
-                task_id = await self._retrying(lambda: adapter.submit(url, opts))
+                task_id = await self._submit(lambda: adapter.submit(url, opts))
             except AsrError as e:
                 self._update_part(meeting_id, index, state="failed", error=str(e))
                 raise StageError(f"提交识别失败：{e}", _kind(e.kind)) from e
@@ -540,36 +547,45 @@ class MeetingManager:
             await asyncio.sleep(delay)
             delay = min(high, delay * 1.5)
 
-    async def _retrying(self, call: Callable[[], Awaitable[T]]) -> T:
+    async def _submit(self, call: Callable[[], Awaitable[T]]) -> T:
+        """提交只在确定服务商没收到时重试：连不上，或被限流（429）。超时、5xx 时任务可能已经建好，
+        再提交会重复计费，所以直接报错，由用户决定是否重试。"""
         attempt = 0
         while True:
             try:
                 return await call()
-            except httpx.HTTPError as e:
+            except (httpx.ConnectError, httpx.ConnectTimeout) as e:
                 if attempt >= 3:
-                    raise AsrError(f"网络错误：{e.__class__.__name__}: {e}", "network") from e
+                    raise AsrError(f"连不上识别服务：{e.__class__.__name__}: {e}", "network") from e
+            except httpx.HTTPError as e:
+                raise AsrError(
+                    f"提交时网络中断（{e.__class__.__name__}），服务商可能已经收到任务；为免重复计费没有自动重试",
+                    "network",
+                ) from e
             except AsrError as e:
-                if not e.retryable or attempt >= 3:
+                if e.kind != "quota" or not e.retryable or attempt >= 3:
                     raise
             attempt += 1
             await asyncio.sleep(2**attempt)
 
-    def _merge_results(self, meeting_id: str, adapter: AsrAdapter) -> tuple[list[MergedSegment], list[str]]:
+    def _merge_results(self, meeting_id: str, adapter: AsrAdapter) -> Alignment:
         parts = self._parts(meeting_id)
         loaded = []
         for p in sorted(parts, key=lambda x: int(x["offset_ms"])):
             raw = json.loads((self.meeting_dir(meeting_id) / str(p["raw"])).read_text("utf-8"))
             loaded.append((int(p["offset_ms"]), int(p["duration_ms"]), adapter.parse(raw)))
-        return merge_parts(loaded)
+        return align_parts(loaded)
 
-    def _store_segments(self, meeting_id: str, merged: list[MergedSegment]) -> None:
+    def _store_segments(
+        self, meeting_id: str, merged: list[MergedSegment], hints: dict[str, dict[str, str]] | None = None
+    ) -> None:
         with self.Session() as db:
             m = db.get(Meeting, meeting_id)
             assert m is not None
             db.execute(delete(MeetingSegment).where(MeetingSegment.meeting_id == meeting_id))
             speakers: dict[str, Any] = {}
             for i, seg in enumerate(merged):
-                speakers.setdefault(seg.speaker, {"name": "", "guess": None, "merged_into": None})
+                speakers.setdefault(seg.speaker, {"name": "", "guess": None, "merged_into": None, "merge_hint": None})
                 db.add(
                     MeetingSegment(
                         meeting_id=meeting_id,
@@ -582,6 +598,10 @@ class MeetingManager:
                         text=seg.text,
                     )
                 )
+            # 切段对齐时配不上的说话人：提示“可能和谁是同一人”；source 标明来源，大模型猜名字时不会清掉
+            for sid, hint in (hints or {}).items():
+                if sid in speakers:
+                    speakers[sid]["merge_hint"] = {**hint, "source": "align"}
             m.speakers = speakers
             m.transcript_state = "raw"
             m.transcript_rev = (m.transcript_rev or 0) + 1
@@ -627,6 +647,8 @@ class MeetingManager:
             warning = f"处理失败：{e.__class__.__name__}: {e}"[:500]
         finally:
             self.op_tasks.pop(meeting_id, None)
+            self.live.pop(meeting_id, None)
+            self._last_persist.pop(meeting_id, None)
             if meeting_id in self.discard_requested and meeting_id not in self.tasks:
                 self.discard_requested.discard(meeting_id)
                 self.remove_files(meeting_id)
@@ -740,14 +762,14 @@ class MeetingManager:
     def purge(self) -> tuple[int, int]:
         """删掉 24 小时没传完的上传，以及过了保留期的录音（文字保留）。返回 (上传数, 录音数)。"""
         now = utcnow()
-        stale_uploads: list[str] = []
+        stale_uploads: list[tuple[str, int]] = []
         expired: list[str] = []
         with self.Session() as db:
             cutoff = now - timedelta(days=load_settings(db).file_retention_days)
             for m in db.scalars(
                 select(Meeting).where(Meeting.status == "uploading", Meeting.created_at < now - UPLOAD_TTL)
             ):
-                stale_uploads.append(m.id)
+                stale_uploads.append((m.id, m.user_id))
                 db.delete(m)
             rows = db.scalars(
                 select(Meeting).where(
@@ -763,8 +785,9 @@ class MeetingManager:
                     m.audio_purged = True
                     expired.append(m.id)
             db.commit()
-        for meeting_id in stale_uploads:
+        for meeting_id, user_id in stale_uploads:
             self.remove_files(meeting_id)
+            self.bus.publish(user_id, {"type": "meeting_removed", "id": meeting_id})
         for meeting_id in expired:
             directory = self.meeting_dir(meeting_id)
             for path in directory.glob("*"):

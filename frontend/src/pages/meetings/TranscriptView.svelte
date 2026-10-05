@@ -6,12 +6,11 @@
   import { LoaderCircle } from '../../lib/icons';
   import { meetingApi } from '../../lib/meeting/api';
   import { clock, isActive, resolveSpeaker, speakerName, speakerTone } from '../../lib/meeting/format';
-  import { Mic, PenLine, Play, Undo2, WandSparkles } from '../../lib/meeting/icons';
+  import { LocateFixed, Mic, PenLine, Play, Undo2, WandSparkles } from '../../lib/meeting/icons';
   import type { MeetingDetail, Segment, TranscriptState } from '../../lib/meeting/types';
   import { meetings } from '../../lib/meetings.svelte';
   import { session } from '../../lib/session.svelte';
   import { toast } from '../../lib/toast.svelte';
-  import { LocateFixed } from './detail-icons';
 
   interface Props {
     meeting: MeetingDetail;

@@ -15,8 +15,9 @@ export function clock(ms: number) {
 export function spoken(ms: number) {
   const total = Math.round(ms / 1000);
   if (total < 60) return `${total} 秒`;
-  const h = Math.floor(total / 3600);
-  const m = Math.round((total % 3600) / 60);
+  const minutes = Math.round(total / 60);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
   if (!h) return `${m} 分钟`;
   return m ? `${h} 小时 ${m} 分` : `${h} 小时`;
 }

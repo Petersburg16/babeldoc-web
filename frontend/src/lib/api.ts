@@ -44,7 +44,12 @@ const PYDANTIC_MESSAGES: [RegExp, (m: RegExpMatchArray) => string][] = [
 const FIELD_NAMES: Record<string, string> = {
   term: '术语',
   title: '标题',
+  description: '说明',
+  sort_order: '排序',
   public_base_url: '站点公网地址',
+  max_audio_upload_mb: '单个录音文件上限',
+  max_audio_hours: '录音时长上限',
+  meeting_context_chars: '大模型上下文预算',
   username: '用户名',
   password: '密码',
   new_password: '新密码',

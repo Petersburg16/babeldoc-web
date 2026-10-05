@@ -24,6 +24,7 @@ from ..db import utcnow
 from ..llm import ChatResult, LlmError
 from ..models import Meeting, MeetingSegment
 from ..settings_store import load_settings
+from .llmcall import add_tokens
 from .templates import MinutesTemplate, get_template
 
 if TYPE_CHECKING:
@@ -416,8 +417,8 @@ def _finish(manager: MeetingManager, meeting_id: str, usage: _Usage, **values: A
             return
         for key, value in values.items():
             setattr(m, key, value)
-        m.tokens = (m.tokens or 0) + usage.tokens
         db.commit()
+    add_tokens(manager, meeting_id, usage.tokens)
     manager.publish(meeting_id)
 
 
@@ -428,8 +429,8 @@ def _restore(manager: MeetingManager, meeting_id: str, usage: _Usage) -> None:
         if m is None:
             return
         m.minutes_state = "ready" if m.minutes_md else "none"
-        m.tokens = (m.tokens or 0) + usage.tokens
         db.commit()
+    add_tokens(manager, meeting_id, usage.tokens)
     manager.publish(meeting_id)
 
 

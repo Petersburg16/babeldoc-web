@@ -276,7 +276,8 @@ def _store(manager: MeetingManager, meeting_id: str, candidates: set[str], guess
                 continue
             guess = guesses.get(sid)
             info["guess"] = asdict(guess) if guess else None
-            info["merge_hint"] = None
+            if (info.get("merge_hint") or {}).get("source") != "align":  # 切段对齐留下的提示保留
+                info["merge_hint"] = None
             touched.add(sid)
         apply_merge_hints(speakers, touched)
         m.speakers = speakers

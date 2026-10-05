@@ -346,6 +346,8 @@ def delete_meeting(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> No
         db.execute(delete(MeetingSegment).where(MeetingSegment.meeting_id == meeting_id))
         db.execute(delete(MeetingMessage).where(MeetingMessage.meeting_id == meeting_id))
     db.commit()
+    # 让同一用户的其他标签页、设备也把这条会议从列表里拿掉
+    ctx.bus.publish(user.id, {"type": "meeting_removed", "id": meeting_id})
     ctx.meetings.request_discard(meeting_id)
     with contextlib.suppress(Exception):
         if not ctx.meetings.is_running(meeting_id):

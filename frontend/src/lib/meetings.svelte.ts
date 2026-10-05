@@ -21,6 +21,7 @@ class MeetingsStore {
 
   constructor() {
     events.on('meeting', (data) => this.upsert(data.meeting));
+    events.on('meeting_removed', (data) => this.remove(data.id));
     events.on('meeting_progress', (data) => {
       this.live[data.id] = { progress: data.progress, stage: data.stage };
     });
@@ -69,7 +70,7 @@ class MeetingsStore {
       this.items = [m, ...this.items];
       this.total += 1;
     }
-    if (['done', 'failed', 'canceled'].includes(m.status)) {
+    if (['done', 'failed', 'canceled'].includes(m.status) && !m.op) {
       const { [m.id]: _, ...rest } = this.live;
       this.live = rest;
     }

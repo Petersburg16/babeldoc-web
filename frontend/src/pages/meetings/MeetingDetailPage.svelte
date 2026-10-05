@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onDestroy, onMount, untrack } from 'svelte';
   import MeetingStatusBadge from '../../components/MeetingStatusBadge.svelte';
+  import ExportMenu from './ExportMenu.svelte';
+  import { ArrowLeft } from '../../lib/meeting/icons';
   import ProgressBar from '../../components/ProgressBar.svelte';
   import Segmented from '../../components/Segmented.svelte';
   import { ApiError } from '../../lib/api';
@@ -8,7 +10,15 @@
   import { dateTime, expiryLabel } from '../../lib/format';
   import { Ban, CircleAlert, Clock, Compass, LoaderCircle, Pencil, RotateCcw, Trash2, TriangleAlert } from '../../lib/icons';
   import { audioUrl, meetingApi } from '../../lib/meeting/api';
-  import { errorKindLabel, isActive, resolveSpeaker, spoken, stageLabel, statusLabel } from '../../lib/meeting/format';
+  import {
+    errorKindLabel,
+    fillSpeakers,
+    isActive,
+    resolveSpeaker,
+    spoken,
+    stageLabel,
+    statusLabel,
+  } from '../../lib/meeting/format';
   import type { Segment } from '../../lib/meeting/types';
   import { meetings } from '../../lib/meetings.svelte';
   import { router } from '../../lib/router.svelte';
@@ -16,7 +26,6 @@
   import { toast } from '../../lib/toast.svelte';
   import AudioPlayer from './AudioPlayer.svelte';
   import ChatPanel from './ChatPanel.svelte';
-  import { ArrowLeft } from './detail-icons';
   import MinutesView from './MinutesView.svelte';
   import SpeakerBar from './SpeakerBar.svelte';
   import TranscriptView from './TranscriptView.svelte';
@@ -351,6 +360,7 @@
 
       <div class="flex shrink-0 items-center gap-1 pt-1">
         <MeetingStatusBadge status={meeting.status} />
+        {#if meeting.transcript_state !== 'none'}<ExportMenu {meeting} />{/if}
         <button class="btn btn-ghost btn-sm btn-icon" disabled={busy} onclick={remove} title="删除会议" aria-label="删除会议">
           <Trash2 class="size-4" />
         </button>
@@ -428,7 +438,7 @@
     {#if meeting.warning}
       <p class="mt-3 flex items-start gap-2 rounded-xl bg-warn-soft px-3.5 py-2.5 text-[12.5px] leading-relaxed whitespace-pre-line text-warn-ink">
         <TriangleAlert class="mt-0.5 size-3.5 shrink-0" />
-        <span class="min-w-0 break-words">{meeting.warning}</span>
+        <span class="min-w-0 break-words">{fillSpeakers(meeting.warning, meeting.speakers)}</span>
       </p>
     {/if}
 

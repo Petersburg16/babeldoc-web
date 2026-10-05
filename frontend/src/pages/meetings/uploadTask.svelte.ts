@@ -1,4 +1,3 @@
-import { events } from '../../lib/events.svelte';
 import { uploadMeeting } from '../../lib/meeting/api';
 import type { Meeting, MeetingCreate } from '../../lib/meeting/types';
 import { meetings } from '../../lib/meetings.svelte';
@@ -19,10 +18,9 @@ class UploadTask {
   name = $state('');
   ratio = $state(0);
   canceling = $state(false);
-  /** 服务器为这次上传建的会议，从事件流里认出来，好让列表里那张卡片也显示上传进度 */
+  /** 服务器为这次上传建的会议，好让列表里那张卡片也显示上传进度 */
   meetingId = $state<string | null>(null);
   private controller: AbortController | null = null;
-  private sending = false;
 
   async start(file: File, options: UploadOptions): Promise<Meeting | null> {
     if (this.active) return null;
@@ -33,36 +31,28 @@ class UploadTask {
     this.ratio = 0;
     this.canceling = false;
     this.meetingId = null;
-    this.sending = false;
-    const known = new Set(meetings.items.map((m) => m.id));
-    const ours = (m: Meeting) => m.status === 'uploading' && m.file_size === file.size && !known.has(m.id);
-    const off = events.on('meeting', (data) => {
-      if (!this.meetingId && ours(data.meeting)) this.meetingId = data.meeting.id;
-    });
     addEventListener('beforeunload', blockUnload);
     try {
       const meeting = await uploadMeeting(
         file,
         options,
-        (ratio) => {
-          this.ratio = ratio;
-          this.sending = true;
-          if (this.canceling && !controller.signal.aborted) controller.abort();
-        },
+        (ratio) => (this.ratio = ratio),
         controller.signal,
+        (created) => {
+          this.meetingId = created.id;
+          meetings.upsert(created);
+        },
       );
       meetings.upsert(meeting);
       toast.success(`「${meeting.title}」已上传，开始识别`);
       return meeting;
     } catch (e) {
-      // 半截的记录 uploadMeeting 已经让服务器删掉了，但删除没有事件，列表里要自己去掉
+      // 半截的记录 uploadMeeting 已经让服务器删掉了；删除事件也会到，这里先去掉免得闪一下
       if (this.meetingId) meetings.remove(this.meetingId);
-      for (const m of meetings.items.filter(ours)) meetings.remove(m.id);
       if (controller.signal.aborted) toast.info('已取消上传');
       else toast.error(e);
       return null;
     } finally {
-      off();
       removeEventListener('beforeunload', blockUnload);
       this.active = false;
       this.ratio = 0;
@@ -75,8 +65,7 @@ class UploadTask {
   cancel() {
     if (!this.controller || this.canceling) return;
     this.canceling = true;
-    // 分片开始传之前 abort 不会生效（分片请求只在发出时挂上 abort 监听），等第一次进度回调再停
-    if (this.sending) this.controller.abort();
+    this.controller.abort();
   }
 }
 

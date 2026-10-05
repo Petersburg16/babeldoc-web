@@ -107,6 +107,7 @@ function putPart(url: string, blob: Blob, onProgress: (loaded: number) => void, 
     };
     xhr.onerror = () => reject(new ApiError('网络连接失败', 0));
     xhr.onabort = () => reject(new DOMException('已取消', 'AbortError'));
+    if (signal?.aborted) return reject(new DOMException('已取消', 'AbortError'));
     signal?.addEventListener('abort', () => xhr.abort(), { once: true });
     xhr.send(blob);
   });
@@ -114,21 +115,25 @@ function putPart(url: string, blob: Blob, onProgress: (loaded: number) => void, 
 
 /**
  * 分片上传：先建会议拿到分片大小，再并发 PUT 各片（网络错误每片重试 3 次），最后 complete。
- * 绕开 Cloudflare 单个请求 100 MB 的上限。onProgress 收到 0–1。
+ * 绕开 Cloudflare 单个请求 100 MB 的上限。onProgress 收到 0–1；onCreated 在服务器建好会议记录后立即调用。
  */
 export async function uploadMeeting(
   file: File,
   options: Omit<MeetingCreate, 'filename' | 'size'>,
   onProgress: (ratio: number) => void,
   signal?: AbortSignal,
+  onCreated?: (meeting: Meeting) => void,
 ): Promise<Meeting> {
+  signal?.throwIfAborted();
   const created = await post<MeetingUpload>('/api/meetings', { ...options, filename: file.name, size: file.size });
   const { id } = created.meeting;
+  onCreated?.(created.meeting);
   const loaded = new Array<number>(created.parts).fill(0);
   const report = () => onProgress(Math.min(1, loaded.reduce((a, b) => a + b, 0) / file.size));
   let next = 0;
   const worker = async () => {
     while (next < created.parts) {
+      signal?.throwIfAborted();
       const index = next++;
       const blob = file.slice(index * created.part_size, Math.min(file.size, (index + 1) * created.part_size));
       for (let attempt = 1; ; attempt++) {
@@ -145,7 +150,9 @@ export async function uploadMeeting(
     }
   };
   try {
+    signal?.throwIfAborted();
     await Promise.all(Array.from({ length: Math.min(3, created.parts) }, worker));
+    signal?.throwIfAborted();
     return await post<Meeting>(`/api/meetings/${id}/upload/complete`);
   } catch (e) {
     // 传不完就把这条“上传中”的记录删掉，免得列表里留一条半截的
