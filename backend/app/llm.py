@@ -55,14 +55,13 @@ class LlmError(Exception):
 
 @dataclass(frozen=True)
 class LlmConfig:
-    profile_id: int
-    name: str
+    model_id: int  # 会议模型（meeting_llm_models）的 id，限流和“致命错误后跳过同一模型”按它区分
     base_url: str
     api_key: str
     model: str
     json_mode: bool = False
     qps: int = 3
-    # 限流的命名空间：不同表的模型 id 会重号，对话和后台整理也分开排队
+    # 限流的命名空间：对话和后台整理分开排队
     namespace: str = "meeting"
     effort: str | None = None  # 已落到模型档位表上的 reasoning_effort；None 不发
     temperature: float | None = None
@@ -72,7 +71,7 @@ class LlmConfig:
     extra: dict[str, Any] = field(default_factory=dict)  # 自定义参数，最后合入请求体
     timeout: float | None = None  # 多久没收到数据算超时
     context_chars: int | None = None  # 覆盖系统设置的上下文预算
-    label: str = ""  # 例如“精细·生成纪要”，用于日志和报错
+    label: str = ""  # 例如“精细·生成纪要”，用于日志
 
 
 @dataclass
@@ -100,7 +99,7 @@ def strip_think(text: str) -> str:
 def _limiter(cfg: LlmConfig) -> asyncio.Semaphore:
     """同一个模型同时进行的请求数不超过它的 QPS 设置（粗略近似）。改了 QPS 换一个新的信号量，不用重启。"""
     # 信号量绑定事件循环，测试里每个应用一个循环
-    key = (id(asyncio.get_running_loop()), cfg.namespace, cfg.profile_id, cfg.qps)
+    key = (id(asyncio.get_running_loop()), cfg.namespace, cfg.model_id, cfg.qps)
     sem = _limiters.get(key)
     if sem is None:
         sem = _limiters[key] = asyncio.Semaphore(min(cfg.qps, 8))

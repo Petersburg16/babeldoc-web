@@ -77,14 +77,14 @@ async def run_pipeline_steps(manager: MeetingManager, meeting_id: str) -> dict[s
             unavailable[step] = reason
             warnings[step] = f"{label}没有进行：{reason}"
             continue
-        if client.cfg.profile_id in dead:
+        if client.cfg.model_id in dead:
             skipped.append(label)
             continue
         manager.set_progress(meeting_id, span[0], step)
         warning, fatal = await _step(manager, meeting_id, client, step, span, label, {})
         warnings[step] = warning
         if fatal:
-            dead.add(client.cfg.profile_id)
+            dead.add(client.cfg.model_id)
     if skipped:
         warnings["pipeline"] = f"大模型暂时不可用，跳过了{'、'.join(skipped)}，稍后可以在会议页面重新操作"
     if len(unavailable) == len(steps) and len(set(unavailable.values())) == 1:

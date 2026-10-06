@@ -42,8 +42,7 @@ PLAIN_BOX = SimpleNamespace(decrypt=lambda value: value)  # build_config 只用�
 
 def config(**extra: Any) -> LlmConfig:
     values: dict[str, Any] = {
-        "profile_id": 1,
-        "name": "t",
+        "model_id": 1,
         "base_url": "https://llm.invalid/v1",
         "api_key": "k",
         "model": "m",
@@ -259,7 +258,7 @@ def test_resolve_meeting_llm_fallback_chain(app):
         assert reason is None and cfg is not None
         assert (cfg.model, cfg.label, cfg.namespace) == ("model-b", "精细·生成纪要", "meeting")
         assert cfg.effort == "high", "xhigh 不在档位表里，就近换成 high"
-        assert (cfg.qps, cfg.context_chars, cfg.timeout, cfg.profile_id) == (2, 50_000, 122.0, b)
+        assert (cfg.qps, cfg.context_chars, cfg.timeout, cfg.model_id) == (2, 50_000, 122.0, b)
         chat_cfg, _ = resolve_meeting_llm(db, ctx.secrets, fine, "chat")
         assert chat_cfg.namespace == "meeting-chat" and chat_cfg.effort is None
 
@@ -505,13 +504,13 @@ def test_strip_think_only_leading_block():
 
 def test_limiter_key_includes_namespace_and_qps():
     async def main():
-        base = config(profile_id=5, qps=2)
+        base = config(model_id=5, qps=2)
         same = llm._limiter(base)
-        assert llm._limiter(config(profile_id=5, qps=2)) is same
-        assert llm._limiter(config(profile_id=5, qps=2, namespace="meeting-chat")) is not same, "对话单独排队"
-        assert llm._limiter(config(profile_id=5, qps=3)) is not same, "改了 QPS 换新的信号量"
-        assert llm._limiter(config(profile_id=6, qps=2)) is not same
-        assert llm._limiter(config(profile_id=5, qps=20))._value == 8, "同时最多 8 个"
+        assert llm._limiter(config(model_id=5, qps=2)) is same
+        assert llm._limiter(config(model_id=5, qps=2, namespace="meeting-chat")) is not same, "对话单独排队"
+        assert llm._limiter(config(model_id=5, qps=3)) is not same, "改了 QPS 换新的信号量"
+        assert llm._limiter(config(model_id=6, qps=2)) is not same
+        assert llm._limiter(config(model_id=5, qps=20))._value == 8, "同时最多 8 个"
 
     asyncio.run(main())
 

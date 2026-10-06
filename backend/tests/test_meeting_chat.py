@@ -306,8 +306,7 @@ def test_disconnect_stops_pulling_from_llm():
     async def main() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
             cfg = LlmConfig(
-                profile_id=1,
-                name="t",
+                model_id=1,
                 base_url="https://llm.invalid/v1",
                 api_key="k",
                 model="m",

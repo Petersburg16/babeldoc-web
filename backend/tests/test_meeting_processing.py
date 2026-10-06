@@ -182,8 +182,7 @@ def add_model(app, **extra: Any) -> int:
 
 def client_for(manager: FakeManager, json_mode: bool = False) -> LlmClient:
     cfg = LlmConfig(
-        profile_id=1,
-        name="m",
+        model_id=1,
         base_url="https://llm.invalid/v1",
         api_key="k",
         model="m",

@@ -271,8 +271,7 @@ def find_preset(db: Session, preset_id: int | None) -> MeetingLlmPreset | None:
 def build_config(model: MeetingLlmModel, box: SecretBox, sc: StepConfig, *, step: str, label: str) -> LlmConfig:
     ladder = normalize_levels(model.effort_levels or [])
     return LlmConfig(
-        profile_id=model.id,
-        name=model.name,
+        model_id=model.id,
         base_url=(model.base_url or DEFAULT_BASE_URL).rstrip("/"),
         api_key=box.decrypt(model.api_key_enc),
         model=model.model,
