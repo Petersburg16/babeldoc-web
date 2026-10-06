@@ -4,8 +4,8 @@
   import { copyText } from '../../lib/format';
   import { Bot, CircleAlert, Copy, LoaderCircle, RefreshCw, RotateCcw, Trash2 } from '../../lib/icons';
   import { meetingApi, streamChat } from '../../lib/meeting/api';
+  import { fillSpeakers } from '../../lib/meeting/format';
   import { MessagesSquare, Send, Square } from '../../lib/meeting/icons';
-  import { withSpeakerNames } from '../../lib/meeting/markdown';
   import type { ChatMessage, MeetingDetail } from '../../lib/meeting/types';
   import { toast } from '../../lib/toast.svelte';
   import MeetingMarkdown from './MeetingMarkdown.svelte';
@@ -187,7 +187,7 @@
   }
 
   async function copy(entry: Entry) {
-    if (await copyText(withSpeakerNames(entry.content, meeting.speakers))) toast.success('已复制');
+    if (await copyText(fillSpeakers(entry.content, meeting.speakers))) toast.success('已复制');
     else toast.error('复制失败，请手动选择文字复制');
   }
 

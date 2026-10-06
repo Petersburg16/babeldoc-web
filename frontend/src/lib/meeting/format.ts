@@ -35,8 +35,6 @@ export function parseClock(text: string): number | null {
   return ((h * 60 + m) * 60 + s) * 1000;
 }
 
-/** 纪要和对话里的时间戳：[hh:mm:ss] 或 [mm:ss] */
-export const TIMESTAMP = /\[(\d{1,2}:\d{2}(?::\d{2})?)\]/g;
 /** 纪要和对话里的说话人占位符：[[S3]] */
 export const SPEAKER_PLACEHOLDER = /\[\[(S\d+)\]\]/g;
 

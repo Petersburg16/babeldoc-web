@@ -8,7 +8,7 @@ interface RenderEnv {
   durationMs?: number;
 }
 
-// 时间戳和说话人占位符一起扫描，各自的写法见 format.ts 的 TIMESTAMP / SPEAKER_PLACEHOLDER；
+// 时间戳 [hh:mm:ss] / [mm:ss] 和说话人占位符（写法同 format.ts 的 SPEAKER_PLACEHOLDER）一起扫描；
 // 大模型偶尔会写成区间 [12:30–15:00]，也认出来，跳到起点
 const MARK = /\[\[(S\d+)\]\]|\[(\d{1,2}:\d{2}(?::\d{2})?)(?:\s*[-–—~～]\s*(\d{1,2}:\d{2}(?::\d{2})?))?\]/g;
 // 时长有误差（取整、转码），留一点余量再判定“超出会议时长”
@@ -22,7 +22,7 @@ function marks(state: StateCore) {
   const env = state.env as RenderEnv | undefined;
   if (!env?.speakers) return;
   const { speakers, durationMs } = env;
-  const names = (text: string) => text.replace(/\[\[(S\d+)\]\]/g, (_, id: string) => speakerName(speakers, id));
+  const names = (text: string) => fillSpeakers(text, speakers);
 
   for (const block of state.tokens) {
     // 代码里的内容原样显示，只把占位符换成名字，不做时间戳按钮
@@ -105,9 +105,4 @@ md.renderer.rules.table_close = (tokens, idx, options) => `${renderToken(tokens,
 export function renderMarkdown(source: string, speakers: Record<string, SpeakerInfo>, durationMs?: number) {
   const env: RenderEnv = { speakers, durationMs };
   return md.render(source, env);
-}
-
-/** 复制、导出用的 Markdown：占位符换成名字，其余原样保留（给人看，不做转义） */
-export function withSpeakerNames(source: string, speakers: Record<string, SpeakerInfo>) {
-  return fillSpeakers(source, speakers);
 }

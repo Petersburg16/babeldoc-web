@@ -6,7 +6,6 @@
   import { meetingApi } from '../../lib/meeting/api';
   import { fillSpeakers, isActive, stageLabel } from '../../lib/meeting/format';
   import { NotebookPen } from '../../lib/meeting/icons';
-  import { withSpeakerNames } from '../../lib/meeting/markdown';
   import type { MeetingDetail, MeetingOp } from '../../lib/meeting/types';
   import { meetings } from '../../lib/meetings.svelte';
   import { toast } from '../../lib/toast.svelte';
@@ -59,7 +58,7 @@
 
   async function copy() {
     if (!meeting.minutes_md) return;
-    if (await copyText(withSpeakerNames(meeting.minutes_md, meeting.speakers))) toast.success('纪要已复制');
+    if (await copyText(fillSpeakers(meeting.minutes_md, meeting.speakers))) toast.success('纪要已复制');
     else toast.error('复制失败，请手动选择文字复制');
   }
 </script>
