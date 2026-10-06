@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator, model_v
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..defaults import default_or_first
 from ..llm import RESERVED, LlmConfig
 from ..models import MeetingLlmModel, MeetingLlmPreset
 from ..security import SecretBox
@@ -273,8 +274,7 @@ def find_preset(db: Session, preset_id: int | None) -> MeetingLlmPreset | None:
     """会议自己的方案 → 默认方案 → 第一个启用的方案；方案被删或停用时往后退。"""
     enabled = select(MeetingLlmPreset).where(MeetingLlmPreset.enabled.is_(True))
     preset = db.scalar(enabled.where(MeetingLlmPreset.id == preset_id)) if preset_id is not None else None
-    preset = preset or db.scalar(enabled.where(MeetingLlmPreset.is_default.is_(True)))
-    return preset or db.scalar(enabled.order_by(MeetingLlmPreset.sort_order, MeetingLlmPreset.id))
+    return preset or default_or_first(db, enabled, MeetingLlmPreset)
 
 
 def build_config(model: MeetingLlmModel, box: SecretBox, sc: StepConfig, *, step: str, label: str) -> LlmConfig:

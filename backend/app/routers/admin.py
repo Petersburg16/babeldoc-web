@@ -8,10 +8,11 @@ from typing import Annotated, Any, Literal
 
 import psutil
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import case, delete, func, or_, select, update
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..db import utcnow
+from ..defaults import ensure_single_default
 from ..deps import AdminDep, AppContext, CtxDep, DbDep, require_admin
 from ..engine import detect_engine_version
 from ..job_ops import cancel_job, delete_job, retry_job
@@ -411,23 +412,6 @@ def _get_model(db: Session, model_id: int) -> ModelProfile:
     return m
 
 
-def _fix_default(db: Session, prefer: ModelProfile | None = None) -> None:
-    if prefer is not None and prefer.is_default:
-        db.execute(update(ModelProfile).where(ModelProfile.id != prefer.id).values(is_default=False))
-    has_default = db.scalar(
-        select(ModelProfile.id).where(ModelProfile.is_default.is_(True), ModelProfile.enabled.is_(True))
-    )
-    if not has_default:
-        first = db.scalar(
-            select(ModelProfile)
-            .where(ModelProfile.enabled.is_(True))
-            .order_by(ModelProfile.sort_order, ModelProfile.id)
-        )
-        db.execute(update(ModelProfile).values(is_default=False))
-        if first is not None:
-            first.is_default = True
-
-
 @router.get("/models")
 def list_models(db: DbDep, ctx: CtxDep) -> list[ModelAdminOut]:
     rows = db.scalars(select(ModelProfile).order_by(ModelProfile.sort_order, ModelProfile.id)).all()
@@ -440,7 +424,7 @@ def create_model(body: ModelIn, db: DbDep, ctx: CtxDep) -> ModelAdminOut:
     m = ModelProfile(**data, api_key_enc=ctx.secrets.encrypt(body.api_key.strip()))
     db.add(m)
     db.flush()
-    _fix_default(db, m)
+    ensure_single_default(db, ModelProfile, m)
     db.commit()
     db.refresh(m)
     return _model_out(ctx, m)
@@ -460,7 +444,7 @@ def patch_model(model_id: int, body: ModelPatch, db: DbDep, ctx: CtxDep) -> Mode
         m.api_key_enc = ""
     elif body.api_key:
         m.api_key_enc = ctx.secrets.encrypt(body.api_key.strip())
-    _fix_default(db, m)
+    ensure_single_default(db, ModelProfile, m)
     db.commit()
     db.refresh(m)
     return _model_out(ctx, m)
@@ -471,7 +455,7 @@ def delete_model(model_id: int, db: DbDep) -> None:
     m = _get_model(db, model_id)
     db.delete(m)
     db.flush()
-    _fix_default(db)
+    ensure_single_default(db, ModelProfile)
     db.commit()
 
 

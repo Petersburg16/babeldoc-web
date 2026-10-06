@@ -16,6 +16,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from ..db import utcnow
+from ..defaults import default_or_first
 from ..deps import AppContext, CtxDep, DbDep, UserDep
 from ..meeting.asr import available_kinds
 from ..meeting.llm_config import find_preset
@@ -74,9 +75,7 @@ def usable_provider(db: Session, ctx: AppContext, provider_id: int | None) -> As
         if provider is None:
             raise HTTPException(400, "所选的识别服务不可用")
         return provider
-    provider = db.scalar(query.where(AsrProvider.is_default.is_(True))) or db.scalar(
-        query.order_by(AsrProvider.sort_order, AsrProvider.id)
-    )
+    provider = default_or_first(db, query, AsrProvider)
     if provider is None:
         raise HTTPException(400, "管理员还没有配置语音识别服务")
     return provider

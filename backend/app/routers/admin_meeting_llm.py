@@ -10,9 +10,10 @@ import time
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..defaults import ensure_single_default
 from ..deps import AppContext, CtxDep, DbDep, require_admin
 from ..llm import LlmClient, LlmConfig, LlmError
 from ..meeting.llm_config import (
@@ -301,18 +302,6 @@ def _preset_out(db: Session, p: MeetingLlmPreset) -> PresetAdminOut:
     )
 
 
-def _fix_default(db: Session, prefer: MeetingLlmPreset | None = None) -> None:
-    """始终只有一个启用的默认方案（有启用的方案时）。"""
-    if prefer is not None and prefer.is_default:
-        db.execute(update(MeetingLlmPreset).where(MeetingLlmPreset.id != prefer.id).values(is_default=False))
-    enabled = select(MeetingLlmPreset).where(MeetingLlmPreset.enabled.is_(True))
-    if db.scalar(enabled.where(MeetingLlmPreset.is_default.is_(True))) is None:
-        db.execute(update(MeetingLlmPreset).values(is_default=False))
-        first = db.scalar(enabled.order_by(MeetingLlmPreset.sort_order, MeetingLlmPreset.id))
-        if first is not None:
-            first.is_default = True
-
-
 def _validate(db: Session, steps: PresetSteps) -> None:
     try:
         check_steps(db, steps)
@@ -339,7 +328,7 @@ def create_preset(body: PresetIn, db: DbDep) -> PresetAdminOut:
     )
     db.add(p)
     db.flush()
-    _fix_default(db, p)
+    ensure_single_default(db, MeetingLlmPreset, p)
     db.commit()
     db.refresh(p)
     return _preset_out(db, p)
@@ -355,7 +344,7 @@ def patch_preset(preset_id: int, body: PresetPatch, db: DbDep) -> PresetAdminOut
         value = getattr(body, name)
         if value is not None:
             setattr(p, name, value.strip() if isinstance(value, str) else value)
-    _fix_default(db, p)
+    ensure_single_default(db, MeetingLlmPreset, p)
     db.commit()
     db.refresh(p)
     return _preset_out(db, p)
@@ -367,7 +356,7 @@ def delete_preset(preset_id: int, db: DbDep) -> None:
     p = _get_preset(db, preset_id)
     db.delete(p)
     db.flush()
-    _fix_default(db)
+    ensure_single_default(db, MeetingLlmPreset)
     db.commit()
 
 

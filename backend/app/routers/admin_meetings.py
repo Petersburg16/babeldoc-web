@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from ..defaults import ensure_single_default
 from ..deps import AdminDep, AppContext, CtxDep, DbDep, require_admin
 from ..meeting.asr import adapter_class, available_kinds
 from ..meeting.asr.base import AsrAdapter
@@ -37,18 +38,6 @@ def _get(db: Session, provider_id: int) -> AsrProvider:
     if p is None:
         raise HTTPException(404, "识别服务不存在")
     return p
-
-
-def _fix_default(db: Session, prefer: AsrProvider | None = None) -> None:
-    if prefer is not None and prefer.is_default:
-        db.execute(update(AsrProvider).where(AsrProvider.id != prefer.id).values(is_default=False))
-    if not db.scalar(select(AsrProvider.id).where(AsrProvider.is_default.is_(True), AsrProvider.enabled.is_(True))):
-        first = db.scalar(
-            select(AsrProvider).where(AsrProvider.enabled.is_(True)).order_by(AsrProvider.sort_order, AsrProvider.id)
-        )
-        db.execute(update(AsrProvider).values(is_default=False))
-        if first is not None:
-            first.is_default = True
 
 
 def _split(cls: type[AsrAdapter], config: dict[str, str], secrets: dict[str, str]) -> tuple[dict, dict]:
@@ -123,7 +112,7 @@ def create_provider(body: ProviderIn, db: DbDep, ctx: CtxDep) -> ProviderAdminOu
     )
     db.add(p)
     db.flush()
-    _fix_default(db, p)
+    ensure_single_default(db, AsrProvider, p)
     db.commit()
     db.refresh(p)
     return ProviderAdminOut.of(p, ctx.secrets)
@@ -156,7 +145,7 @@ def patch_provider(provider_id: int, body: ProviderPatch, db: DbDep, ctx: CtxDep
     _check_required(cls, config, secrets)
     p.config = config
     p.secret_enc = ctx.secrets.encrypt(json.dumps(secrets)) if secrets else ""
-    _fix_default(db, p)
+    ensure_single_default(db, AsrProvider, p)
     db.commit()
     db.refresh(p)
     return ProviderAdminOut.of(p, ctx.secrets)
@@ -176,7 +165,7 @@ def delete_provider(provider_id: int, db: DbDep) -> None:
         raise HTTPException(409, "还有会议正在使用这个识别服务，等它们识别完再删除")
     db.delete(p)
     db.flush()
-    _fix_default(db)
+    ensure_single_default(db, AsrProvider)
     db.commit()
 
 

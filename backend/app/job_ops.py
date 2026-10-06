@@ -5,6 +5,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from .db import utcnow
+from .defaults import default_or_first
 from .deps import AppContext
 from .models import JOB_ACTIVE, Job, ModelProfile, User
 from .services import effective_quota, job_dir, month_pages, remove_job_files
@@ -12,10 +13,7 @@ from .settings_store import load_settings
 
 
 def default_model(db: Session) -> ModelProfile | None:
-    enabled = select(ModelProfile).where(ModelProfile.enabled.is_(True))
-    return db.scalar(enabled.where(ModelProfile.is_default.is_(True))) or db.scalar(
-        enabled.order_by(ModelProfile.sort_order, ModelProfile.id)
-    )
+    return default_or_first(db, select(ModelProfile).where(ModelProfile.enabled.is_(True)), ModelProfile)
 
 
 def check_capacity(db: Session, owner: User, new_pages: int, new_jobs: int) -> None:
