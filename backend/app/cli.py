@@ -18,7 +18,7 @@ from .config import PROJECT_DIR, load_config
 from .db import init_db, make_engine, make_sessionmaker
 from .engine import build_spec, child_env, engine_command, spawn
 from .job_ops import default_model
-from .models import Job, ModelProfile, User
+from .models import JOB_ACTIVE, Job, ModelProfile, User
 from .schemas import normalize_username
 from .security import SecretBox, hash_password
 
@@ -78,9 +78,7 @@ def delete_user(args: argparse.Namespace) -> None:
         if user is None:
             sys.exit(f"没有用户 {args.username}")
         job_ids = db.scalars(select(Job.id).where(Job.user_id == user.id)).all()
-        active = db.scalar(
-            select(func.count(Job.id)).where(Job.user_id == user.id, Job.status.in_(("queued", "running")))
-        )
+        active = db.scalar(select(func.count(Job.id)).where(Job.user_id == user.id, Job.status.in_(JOB_ACTIVE)))
         if active:
             sys.exit(f"{args.username} 还有 {active} 个排队/进行中的任务，请先在管理后台取消")
         db.delete(user)

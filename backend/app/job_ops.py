@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .db import utcnow
 from .defaults import default_or_first
 from .deps import AppContext
-from .models import JOB_ACTIVE, Job, ModelProfile, User
+from .models import JOB_ACTIVE, JOB_RETRYABLE, Job, ModelProfile, User
 from .schemas import JobOut
 from .services import effective_quota, job_dir, month_pages, remove_job_files
 from .settings_store import load_settings
@@ -28,7 +28,7 @@ def status_conditions(status: JobFilter) -> list[ColumnElement[bool]]:
     if status == "succeeded":
         return [Job.status == "succeeded"]
     if status == "failed":
-        return [Job.status.in_(("failed", "canceled"))]
+        return [Job.status.in_(JOB_RETRYABLE)]
     return []
 
 
@@ -76,7 +76,7 @@ def cancel_job(db: Session, ctx: AppContext, job: Job) -> None:
 
 
 def retry_job(db: Session, ctx: AppContext, job: Job) -> None:
-    if job.status not in ("failed", "canceled"):
+    if job.status not in JOB_RETRYABLE:
         raise HTTPException(409, "只有失败或已取消的任务可以重试")
     if job.files_purged or not (job_dir(ctx.config.jobs_dir, job.id) / "input.pdf").is_file():
         raise HTTPException(409, "原文件已过期清理，请重新上传")

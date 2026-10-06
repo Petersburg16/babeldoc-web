@@ -6,7 +6,16 @@ from fastapi.testclient import TestClient
 
 from app.db import utcnow
 from app.main import create_app
-from app.models import Job
+from app.models import (
+    JOB_ACTIVE,
+    JOB_BILLABLE,
+    JOB_FINISHED,
+    JOB_RETRYABLE,
+    MEETING_ACTIVE,
+    MEETING_FINISHED,
+    MEETING_RETRYABLE,
+    Job,
+)
 
 from .conftest import ADMIN, add_user, build_config, login, make_pdf, upload, wait_status
 
@@ -238,3 +247,14 @@ def test_running_jobs_are_requeued_after_restart(tmp_path, monkeypatch):
 
 def test_make_pdf_helper_is_valid():
     assert make_pdf(2).startswith(b"%PDF")
+
+
+def test_status_constants_keep_stored_values():
+    """状态取值存在库里、前端也按它们判断：这些常量只是换个写法，值不能变。"""
+    assert set(JOB_ACTIVE) == {"queued", "running"}
+    assert set(JOB_BILLABLE) == {"queued", "running", "succeeded"}
+    assert set(JOB_FINISHED) == {"succeeded", "failed", "canceled"}
+    assert set(JOB_RETRYABLE) == {"failed", "canceled"}
+    assert set(MEETING_ACTIVE) == {"queued", "transcoding", "transcribing", "processing"}
+    assert set(MEETING_FINISHED) == {"done", "failed", "canceled"}
+    assert set(MEETING_RETRYABLE) == {"failed", "canceled"}

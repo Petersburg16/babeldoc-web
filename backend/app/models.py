@@ -9,10 +9,15 @@ from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base, utcnow
 from .meeting.templates import DEFAULT_TEMPLATE
 
+# 状态取值存在库里，前端也按这些值判断：只能加新常量，不要改已有的取值
 JOB_ACTIVE = ("queued", "running")
 JOB_BILLABLE = ("queued", "running", "succeeded")
+JOB_FINISHED = ("succeeded", "failed", "canceled")
+JOB_RETRYABLE = ("failed", "canceled")  # 任务列表“失败”一栏显示的也是这些
 # 会议记录的主状态里，这些表示还在处理（上传中不算：没传完的由清理任务收尾）
 MEETING_ACTIVE = ("queued", "transcoding", "transcribing", "processing")
+MEETING_FINISHED = ("done", "failed", "canceled")
+MEETING_RETRYABLE = ("failed", "canceled")
 
 
 class User(Base):

@@ -21,7 +21,7 @@ from .config import Config
 from .db import utcnow
 from .engine import EngineProcess, build_spec, child_env, read_events, spawn
 from .events import EventBus
-from .models import AuthSession, Job, ModelProfile
+from .models import JOB_FINISHED, AuthSession, Job, ModelProfile
 from .schemas import JobOut
 from .security import SecretBox
 from .services import job_dir, queue_positions, remove_job_files
@@ -402,7 +402,7 @@ class JobManager:
                     Job.files_purged.is_(False),
                     Job.finished_at.is_not(None),
                     Job.finished_at < cutoff,
-                    Job.status.in_(("succeeded", "failed", "canceled")),
+                    Job.status.in_(JOB_FINISHED),
                 )
             ).all()
             for job in jobs:

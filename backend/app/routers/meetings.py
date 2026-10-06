@@ -36,7 +36,16 @@ from ..meeting.schemas import (
     TemplateOut,
 )
 from ..meeting.templates import TEMPLATES
-from ..models import MEETING_ACTIVE, AsrProvider, Meeting, MeetingLlmPreset, MeetingMessage, MeetingSegment, User
+from ..models import (
+    MEETING_ACTIVE,
+    MEETING_RETRYABLE,
+    AsrProvider,
+    Meeting,
+    MeetingLlmPreset,
+    MeetingMessage,
+    MeetingSegment,
+    User,
+)
 from ..security import new_job_id
 from ..settings_store import load_settings
 from ..uploads import clean_filename
@@ -321,7 +330,7 @@ def meeting_audio(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> Fil
 @router.post("/{meeting_id}/cancel")
 def cancel_meeting(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> MeetingOut:
     m = own_meeting(db, user, meeting_id)
-    if m.status not in ("queued", "transcoding", "transcribing", "processing"):
+    if m.status not in MEETING_ACTIVE:
         raise HTTPException(409, "这场会议已经结束，无法取消")
     ctx.meetings.request_cancel(meeting_id)
     return ctx.meetings.meeting_out(m, load_settings(db).file_retention_days)
@@ -330,7 +339,7 @@ def cancel_meeting(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> Me
 @router.post("/{meeting_id}/retry")
 def retry_meeting(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> MeetingOut:
     m = own_meeting(db, user, meeting_id)
-    if m.status not in ("failed", "canceled"):
+    if m.status not in MEETING_RETRYABLE:
         raise HTTPException(409, "只有失败或已取消的会议可以重试")
     if ctx.meetings.is_running(meeting_id):
         raise HTTPException(409, "这场会议还在收尾，请稍后再试")
@@ -352,7 +361,7 @@ def retry_meeting(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> Mee
     # 条件更新：两台设备同时点重试时只有一个生效，另一个不会覆盖驱动刚写入的令牌
     changed = db.execute(
         update(Meeting)
-        .where(Meeting.id == meeting_id, Meeting.status.in_(("failed", "canceled")))
+        .where(Meeting.id == meeting_id, Meeting.status.in_(MEETING_RETRYABLE))
         .values(
             status=status,
             asr_parts=parts,

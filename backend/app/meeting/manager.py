@@ -29,7 +29,7 @@ from sqlalchemy.orm import sessionmaker
 from ..config import Config
 from ..db import utcnow
 from ..events import EventBus
-from ..models import AsrProvider, GlossaryTerm, Meeting, MeetingSegment
+from ..models import MEETING_ACTIVE, MEETING_FINISHED, AsrProvider, GlossaryTerm, Meeting, MeetingSegment
 from ..security import SecretBox
 from ..settings_store import load_settings
 from . import processing, split
@@ -142,7 +142,7 @@ class MeetingManager:
             rows = db.scalars(
                 select(Meeting).where(
                     Meeting.deleted_at.is_(None),
-                    Meeting.status.in_(("queued", "transcoding", "transcribing", "processing", "done")),
+                    Meeting.status.in_((*MEETING_ACTIVE, "done")),
                 )
             ).all()
             for m in rows:
@@ -217,7 +217,7 @@ class MeetingManager:
         # 没在跑（例如刚完成上传、驱动还没起来）：直接改状态
         with self.Session() as db:
             m = db.get(Meeting, meeting_id)
-            if m and m.status in ("queued", "transcoding", "transcribing", "processing"):
+            if m and m.status in MEETING_ACTIVE:
                 m.status = "canceled"
                 m.finished_at = utcnow()
                 m.stage = ""
@@ -761,7 +761,7 @@ class MeetingManager:
             m, retention_days=retention_days, audio_exists=(self.meeting_dir(m.id) / AUDIO_NAME).is_file()
         )
         live = self.live.get(m.id)
-        if live and m.status not in ("done", "failed", "canceled"):
+        if live and m.status not in MEETING_FINISHED:
             out.progress, out.stage = round(live[0], 2), live[1]
         return out
 
@@ -802,7 +802,7 @@ class MeetingManager:
                 select(Meeting).where(
                     Meeting.audio_purged.is_(False),
                     Meeting.deleted_at.is_(None),
-                    Meeting.status.in_(("done", "failed", "canceled")),
+                    Meeting.status.in_(MEETING_FINISHED),
                 )
             ).all()
             for m in rows:
