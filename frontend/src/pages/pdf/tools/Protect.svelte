@@ -4,9 +4,9 @@
   import Switch from '../../../components/Switch.svelte';
   import { copyText } from '../../../lib/format';
   import { Copy, Eye } from '../../../lib/icons';
-  import { QpdfError } from '../../../lib/pdf/engines/qpdf';
   import { pdfBlob, renamed, type Report } from '../../../lib/pdf/files';
   import { EyeOff } from '../../../lib/pdf/icons';
+  import { readUserPdf } from '../../../lib/pdf/input';
   import {
     encryptPdf,
     isRestricted,
@@ -41,7 +41,6 @@
   });
 
   async function run(report: Report) {
-    const { unlockPdf } = await import('../../../lib/pdf/input');
     done = null;
     const file = files[0];
     const permissions = { print, copy, modify, annotate };
@@ -49,9 +48,7 @@
     const owner = restricted ? ownerPassword : '';
     report(null, '读取文件');
     // 已加密的文件先解开（需要时弹窗要原密码），再按新设置加密
-    const source = await unlockPdf(file).catch((e) => {
-      throw e instanceof QpdfError ? new Error('无法识别为 PDF，文件可能已损坏') : e;
-    });
+    const source = await readUserPdf(file);
     report(null, '正在加密');
     const out = await encryptPdf(source.bytes, { userPassword: user, ownerPassword: owner, permissions });
     done = {

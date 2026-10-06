@@ -3,6 +3,7 @@
   import Segmented from '../../../components/Segmented.svelte';
   import { LoaderCircle } from '../../../lib/icons';
   import { stem, type Report } from '../../../lib/pdf/files';
+  import { readUserPdf } from '../../../lib/pdf/input';
   import type { PdfInfo, SplitMode } from '../../../lib/pdf/ops/split';
   import { parseRanges, rangeError } from '../../../lib/pdf/ranges';
   import ToolFrame from '../ui/ToolFrame.svelte';
@@ -55,9 +56,9 @@
   });
 
   async function run(report: Report) {
-    const { loadPdf, splitPdf } = await import('../../../lib/pdf/ops/split');
+    const { splitPdf } = await import('../../../lib/pdf/ops/split');
     report(null, `读取「${file.name}」`);
-    const pdf = await loadPdf(file);
+    const pdf = await readUserPdf(file, { countPages: true });
     wasEncrypted = pdf.encrypted;
     probe = { file, info: { pages: pdf.pages, locked: false, broken: false } };
     return splitPdf(file.name, pdf.bytes, pdf.pages, { mode, spec, every: every ?? 1 }, report);

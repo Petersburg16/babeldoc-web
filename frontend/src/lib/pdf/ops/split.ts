@@ -1,9 +1,8 @@
 // 移植自 BentoPDF（AGPL-3.0）src/js/logic/split-pdf-page.ts、extract-pages-page.ts、rotate-pdf-page.ts，按本站引擎与界面重写
 // 拆分、提取、旋转都用 qpdf：只搬运页面对象，不重写内容；共享的字体等资源不会在每份里各复制一遍。
 import { engines } from '../engines.svelte';
-import { encryptionInfo, QpdfError, runQpdf } from '../engines/qpdf';
+import { encryptionInfo, QpdfError, retryOnCrash, runQpdf } from '../engines/qpdf';
 import { type OutputFile, pdfBlob, readBytes, type Report, stem } from '../files';
-import { unlockPdf } from '../input';
 import { compactPages, expandRanges, formatRanges, parseRanges } from '../ranges';
 import { countPages } from './pages';
 
@@ -34,33 +33,6 @@ export async function inspectPdf(file: File): Promise<PdfInfo | null> {
     });
   } catch {
     return { locked: false, broken: true };
-  }
-}
-
-/** 开始处理时读入：加密的先解开（要密码时弹窗），结果不再加密 */
-export async function loadPdf(file: File) {
-  try {
-    const { bytes, encrypted } = await retryOnCrash(() => unlockPdf(file));
-    return { bytes, encrypted, pages: await retryOnCrash(() => countPages(bytes)) };
-  } catch (e) {
-    if (e instanceof QpdfError && e.message !== '密码不正确') {
-      throw new Error(`无法读取「${file.name}」，文件可能已损坏或不是 PDF`, { cause: e });
-    }
-    throw e;
-  }
-}
-
-/**
- * qpdf-wasm 在同一个模块里累计运行两三百条命令后会崩溃（实测 228～323 次，与文件大小无关）。
- * worker 已经每 100 条命令换一个实例、崩溃后自己重跑一次（qpdf.worker.ts），这一层只兜底 worker 整体崩溃
- * 或重跑仍失败（退出码 -1）的情况，再试一次，免得把好文件报成“已损坏”。
- */
-async function retryOnCrash<T>(fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn();
-  } catch (e) {
-    if (e instanceof QpdfError && e.code === -1) return fn();
-    throw e;
   }
 }
 
@@ -261,7 +233,7 @@ const pageLabel = (a: number, b: number) => (a === b ? `第${a}页` : `第${a}-$
 
 const span = (start: number, end: number) => Array.from({ length: end - start + 1 }, (_, i) => start - 1 + i);
 
-/** bytes 需未加密（先用 loadPdf） */
+/** bytes 需未加密（先用 input.ts 的 readUserPdf 读入） */
 export async function splitPdf(
   name: string,
   bytes: Uint8Array,

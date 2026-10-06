@@ -9,7 +9,7 @@
   import { engines } from '../../../lib/pdf/engines.svelte';
   import { pdfBlob, renamed, type Report } from '../../../lib/pdf/files';
   import { ArrowDownUp, FilePlus, RotateCw, Undo2 } from '../../../lib/pdf/icons';
-  import { Cancelled } from '../../../lib/pdf/input';
+  import { Cancelled, unlockPdf, unreadable } from '../../../lib/pdf/input';
   import type { PageInfo, PageSource, Slot } from '../../../lib/pdf/ops/organize';
   import { normalizeRotation } from '../../../lib/pdf/ops/pages';
   import { passwordState } from '../../../lib/pdf/password.svelte';
@@ -116,10 +116,7 @@
     let unlocked: { bytes: Uint8Array; encrypted: boolean };
     let view: PageSource;
     try {
-      const [{ unlockPdf }, { openPages }] = await Promise.all([
-        import('../../../lib/pdf/input'),
-        import('../../../lib/pdf/ops/organize'),
-      ]);
+      const { openPages } = await import('../../../lib/pdf/ops/organize');
       unlocked = await unlockPdf(file);
       if (!alive()) return null;
       view = await openPages(unlocked.bytes, (index, url) => {
@@ -132,7 +129,7 @@
         return null;
       }
       console.warn(e);
-      fail(`无法读取「${file.name}」：文件可能已损坏，或不是 PDF`, false);
+      fail(unreadable(file), false);
       return null;
     }
     if (!alive()) {

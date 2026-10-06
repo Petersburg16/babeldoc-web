@@ -87,6 +87,20 @@ export function runQpdf(
   });
 }
 
+/**
+ * qpdf-wasm 在同一个模块里累计运行两三百条命令后会崩溃（实测 228～323 次，与文件大小无关）。
+ * worker 已经每 100 条命令换一个实例、崩溃后自己重跑一次（qpdf.worker.ts），这一层只兜底 worker 整体崩溃
+ * 或重跑仍失败（退出码 -1）的情况，再试一次，免得把好文件报成“已损坏”。会弹密码框的步骤不要套这一层。
+ */
+export async function retryOnCrash<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e instanceof QpdfError && e.code === -1) return fn();
+    throw e;
+  }
+}
+
 /** 单输入单输出：qpdfOne(['--decrypt'], bytes, password) */
 export async function qpdfOne(args: string[], input: Uint8Array, password?: string) {
   const pw = password ? [`--password=${password}`] : [];

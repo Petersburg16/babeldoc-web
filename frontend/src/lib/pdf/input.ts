@@ -40,6 +40,32 @@ export async function unlockPdf(file: File, bytes?: Uint8Array): Promise<Unlocke
   }
 }
 
+/** 用户的文件读不出来时给出的说明（带文件名）；在界面上自己显示报错的工具也用这一句 */
+export function unreadable(file: File) {
+  return `无法读取「${file.name}」，文件可能已损坏或不是 PDF`;
+}
+
+/**
+ * 开始处理时读入用户选的 PDF：加密的先解开（要密码时弹窗），结果不再加密；countPages 时顺带读页数。
+ * qpdf 读不了时换成带文件名的中文说明；引擎崩溃（worker 自己重跑也失败）时请用户重试，不说成文件损坏。
+ * 需要 qpdf 引擎（调用方先 ensure 'qpdf'）
+ */
+export async function readUserPdf(file: File): Promise<UnlockedPdf>;
+export async function readUserPdf(file: File, options: { countPages: true }): Promise<UnlockedPdf & { pages: number }>;
+export async function readUserPdf(file: File, options: { countPages?: boolean } = {}): Promise<UnlockedPdf & { pages?: number }> {
+  const { QpdfError, retryOnCrash } = await import('./engines/qpdf');
+  try {
+    const unlocked = await unlockPdf(file);
+    if (!options.countPages) return unlocked;
+    const { countPages } = await import('./ops/pages');
+    // 只给读页数套重试：解密那一步会弹密码框，重试会让用户再输一遍
+    return { ...unlocked, pages: await retryOnCrash(() => countPages(unlocked.bytes)) };
+  } catch (e) {
+    if (!(e instanceof QpdfError)) throw e;
+    throw new Error(e.code === -1 ? `读取「${file.name}」时 PDF 处理引擎出错，请重试` : unreadable(file), { cause: e });
+  }
+}
+
 /**
  * 需要打开密码时询问用户，直到密码正确；不需要密码返回 undefined。
  * 给直接用 qpdf 处理原文件的工具用（qpdf 可以带着密码读入，不必先解密）。需要 qpdf 引擎。

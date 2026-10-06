@@ -1,7 +1,8 @@
 <script lang="ts">
   import FilePicker from '../../../components/FilePicker.svelte';
   import Segmented from '../../../components/Segmented.svelte';
-  import { readBytes, stem, type Report } from '../../../lib/pdf/files';
+  import { stem, type Report } from '../../../lib/pdf/files';
+  import { readUserPdf } from '../../../lib/pdf/input';
   import type { ImageFormat } from '../../../lib/pdf/ops/images';
   import { rangeError } from '../../../lib/pdf/ranges';
   import ToolFrame from '../ui/ToolFrame.svelte';
@@ -19,23 +20,12 @@
   const dpiHint = { '72': '适合预览和缩略图，文件最小', '150': '适合屏幕阅读和分享', '300': '适合打印，文件较大' };
 
   async function run(report: Report) {
-    const [{ unlockPdf }, { QpdfError }, { pdfToImages }] = await Promise.all([
-      import('../../../lib/pdf/input'),
-      import('../../../lib/pdf/engines/qpdf'),
-      import('../../../lib/pdf/ops/images'),
-    ]);
+    const { pdfToImages } = await import('../../../lib/pdf/ops/images');
     const file = files[0];
     const chosen = { format, dpi };
     const opts = { format, dpi: Number(dpi), quality: quality / 100, pages };
     report(null, `读取「${file.name}」`);
-    let bytes: Uint8Array;
-    try {
-      ({ bytes } = await unlockPdf(file, await readBytes(file)));
-    } catch (e) {
-      // qpdf 的报错是英文术语（如 can't find startxref），换成用户看得懂的说法
-      if (e instanceof QpdfError) throw new Error(`无法读取「${file.name}」，文件可能已损坏或不是 PDF`, { cause: e });
-      throw e;
-    }
+    const { bytes } = await readUserPdf(file);
     const result = await pdfToImages(bytes, file.name, opts, report);
     zipName = `${stem(file.name)}-图片.zip`;
     info = { ...chosen, sizes: result.sizes, reduced: result.reduced };

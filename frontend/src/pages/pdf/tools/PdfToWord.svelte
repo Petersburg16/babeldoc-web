@@ -1,6 +1,7 @@
 <script lang="ts">
   import FilePicker from '../../../components/FilePicker.svelte';
   import { renamed, type Report } from '../../../lib/pdf/files';
+  import { readUserPdf } from '../../../lib/pdf/input';
   import { expandRanges, rangeError } from '../../../lib/pdf/ranges';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
@@ -21,22 +22,9 @@
   async function run(report: Report, stop: AbortSignal) {
     warnings = [];
     const file = files[0];
-    const [{ unlockPdf }, { countPages }, { QpdfError }, { pdfToDocx }] = await Promise.all([
-      import('../../../lib/pdf/input'),
-      import('../../../lib/pdf/ops/pages'),
-      import('../../../lib/pdf/engines/qpdf'),
-      import('../../../lib/pdf/ops/pdf2docx'),
-    ]);
+    const { pdfToDocx } = await import('../../../lib/pdf/ops/pdf2docx');
     report(null, '读取文件');
-    let bytes: Uint8Array;
-    let total: number;
-    try {
-      ({ bytes } = await unlockPdf(file));
-      total = await countPages(bytes);
-    } catch (e) {
-      if (e instanceof QpdfError) throw new Error(`无法读取「${file.name}」：文件可能已损坏，或不是 PDF`);
-      throw e;
-    }
+    const { bytes, pages: total } = await readUserPdf(file, { countPages: true });
     const indices = pages.trim() ? expandRanges(pages, total) : null;
     report(null, '加载引擎');
     // 点停止或离开页面时 stop 会中止（ToolFrame），转换随之停下，否则回来再转要排在它后面等

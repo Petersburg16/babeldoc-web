@@ -7,6 +7,7 @@
   import { CJK_FONTS, type CjkFont, needsCjkFont } from '../../../lib/pdf/engines/pdflib';
   import { pdfBlob, readBytes, renamed, type Report } from '../../../lib/pdf/files';
   import { CloudDownload, ImagePlus } from '../../../lib/pdf/icons';
+  import { readUserPdf } from '../../../lib/pdf/input';
   import type { Watermark } from '../../../lib/pdf/ops/watermark';
   import { rangeError } from '../../../lib/pdf/ranges';
   import ToolFrame from '../ui/ToolFrame.svelte';
@@ -82,20 +83,10 @@
   async function run(report: Report) {
     clearResult();
     const token = runs;
-    const [{ unlockPdf, Cancelled }, { QpdfError }, { addWatermark }] = await Promise.all([
-      import('../../../lib/pdf/input'),
-      import('../../../lib/pdf/engines/qpdf'),
-      import('../../../lib/pdf/ops/watermark'),
-    ]);
+    const { addWatermark } = await import('../../../lib/pdf/ops/watermark');
     const file = files[0];
     report(null, `读取「${file.name}」`);
-    let unlocked;
-    try {
-      unlocked = await unlockPdf(file);
-    } catch (e) {
-      if (e instanceof Cancelled || !(e instanceof QpdfError) || e.message === '密码不正确') throw e;
-      throw new Error(`无法读取「${file.name}」，文件可能已损坏或不是 PDF`);
-    }
+    const unlocked = await readUserPdf(file);
     const common = { pages, opacity: opacity / 100, angle: Number(angles[kind]), tile: layout === 'tile' };
     const mark: Watermark =
       kind === 'text'

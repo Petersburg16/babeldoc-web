@@ -3,6 +3,7 @@
   import Segmented from '../../../components/Segmented.svelte';
   import { LoaderCircle } from '../../../lib/icons';
   import { pdfBlob, renamed, type Report } from '../../../lib/pdf/files';
+  import { readUserPdf } from '../../../lib/pdf/input';
   import type { Angle, PdfInfo } from '../../../lib/pdf/ops/split';
   import { rangeError } from '../../../lib/pdf/ranges';
   import ToolFrame from '../ui/ToolFrame.svelte';
@@ -40,9 +41,9 @@
   });
 
   async function run(report: Report) {
-    const { loadPdf, rotatePdf } = await import('../../../lib/pdf/ops/split');
+    const { rotatePdf } = await import('../../../lib/pdf/ops/split');
     report(null, `读取「${file.name}」`);
-    const pdf = await loadPdf(file);
+    const pdf = await readUserPdf(file, { countPages: true });
     wasEncrypted = pdf.encrypted;
     probe = { file, info: { pages: pdf.pages, locked: false, broken: false } };
     report(null, '正在旋转');

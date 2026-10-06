@@ -4,6 +4,7 @@
   import { type EngineId, engines } from '../../../lib/pdf/engines.svelte';
   import { CJK_FONTS, type CjkFont } from '../../../lib/pdf/engines/pdflib';
   import { pdfBlob, renamed, type Report } from '../../../lib/pdf/files';
+  import { readUserPdf } from '../../../lib/pdf/input';
   import type { Align, NumberFormat, Vertical } from '../../../lib/pdf/ops/pagenumbers';
   import { rangeError } from '../../../lib/pdf/ranges';
   import ToolFrame from '../ui/ToolFrame.svelte';
@@ -57,23 +58,11 @@
   );
 
   async function run(report: Report) {
-    const [{ unlockPdf }, { QpdfError }, { addPageNumbers }] = await Promise.all([
-      import('../../../lib/pdf/input'),
-      import('../../../lib/pdf/engines/qpdf'),
-      import('../../../lib/pdf/ops/pagenumbers'),
-    ]);
+    const { addPageNumbers } = await import('../../../lib/pdf/ops/pagenumbers');
     const file = files[0];
     if (!file.size) throw new Error(`「${file.name}」是空文件，请重新选择`);
     report(null, `读取「${file.name}」`);
-    let input: Uint8Array;
-    try {
-      ({ bytes: input } = await unlockPdf(file));
-    } catch (e) {
-      // qpdf 的原始报错带着 worker 里的临时文件名（/in.pdf: …），给用户看时去掉
-      if (!(e instanceof QpdfError)) throw e;
-      const detail = e.message.replace(/^PDF 处理失败：/, '').replace(/\/[^\s:/]+:\s*/g, '');
-      throw new Error(`「${file.name}」读取失败，文件可能已损坏或不是有效的 PDF${detail ? `（${detail}）` : ''}`);
-    }
+    const { bytes: input } = await readUserPdf(file);
     const out = await addPageNumbers(
       input,
       { format, vertical, align, start, pages, fontSize, margin: (marginMm * 72) / 25.4, font },

@@ -4,7 +4,8 @@
   import Switch from '../../../components/Switch.svelte';
   import { copyText, duration } from '../../../lib/format';
   import { Copy, Download } from '../../../lib/icons';
-  import { download, pdfBlob, readBytes, renamed, type Report } from '../../../lib/pdf/files';
+  import { download, pdfBlob, renamed, type Report } from '../../../lib/pdf/files';
+  import { readUserPdf } from '../../../lib/pdf/input';
   import type { OcrLanguage, OcrResult } from '../../../lib/pdf/ops/ocr';
   import { rangeError } from '../../../lib/pdf/ranges';
   import { toast } from '../../../lib/toast.svelte';
@@ -20,22 +21,11 @@
   const badRange = $derived(range.trim() ? rangeError(range) : '');
 
   async function run(report: Report, stop: AbortSignal) {
-    const [{ ocrPdf }, { unlockPdf }, { QpdfError }] = await Promise.all([
-      import('../../../lib/pdf/ops/ocr'),
-      import('../../../lib/pdf/input'),
-      import('../../../lib/pdf/engines/qpdf'),
-    ]);
+    const { ocrPdf } = await import('../../../lib/pdf/ops/ocr');
     const file = files[0];
     done = null;
     report(null, `读取「${file.name}」`);
-    const bytes = await readBytes(file);
-    let unlocked;
-    try {
-      unlocked = await unlockPdf(file, bytes);
-    } catch (e) {
-      if (e instanceof QpdfError) throw new Error(`无法读取「${file.name}」：文件可能已损坏，或不是 PDF`);
-      throw e;
-    }
+    const unlocked = await readUserPdf(file);
     const started = performance.now();
     // 点停止或离开页面时 stop 会中止（ToolFrame），识别随之停下，释放 worker 占的内存
     const { pdf, ...rest } = await ocrPdf(unlocked.bytes, {
