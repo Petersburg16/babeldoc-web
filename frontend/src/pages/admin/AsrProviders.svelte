@@ -5,6 +5,7 @@
   import { api, ApiError } from '../../lib/api';
   import { confirm } from '../../lib/confirm.svelte';
   import { events } from '../../lib/events.svelte';
+  import { errorText } from '../../lib/format';
   import {
     ArrowLeftRight,
     AudioWaveform,
@@ -251,7 +252,7 @@
     try {
       checks[p.id] = await meetingApi.admin.checkProvider(p.id);
     } catch (e) {
-      checks[p.id] = { ok: false, message: e instanceof Error ? e.message : String(e) };
+      checks[p.id] = { ok: false, message: errorText(e) };
     }
   }
 
@@ -304,7 +305,7 @@
       tests[p.id] = {
         running: false,
         ok: false,
-        steps: [{ name: '开始测试', ok: false, message: e instanceof Error ? e.message : String(e) }],
+        steps: [{ name: '开始测试', ok: false, message: errorText(e) }],
         lost: false,
       };
     }

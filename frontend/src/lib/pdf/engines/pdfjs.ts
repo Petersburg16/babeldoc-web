@@ -3,6 +3,7 @@
 // legacy 5.7 支持 Chrome 118+。CMap、标准字体、wasm 解码器都由本站提供，缺了 CMap 知网等中文 PDF 会丢字。
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
+import { errorText } from '../../format';
 import { assetBase } from '../engines.svelte';
 
 export type PdfDoc = pdfjs.PDFDocumentProxy;
@@ -36,7 +37,7 @@ export async function openPdf(bytes: Uint8Array): Promise<PdfDoc> {
   } catch (e) {
     await task.destroy();
     if ((e as { name?: string })?.name === 'PasswordException') throw new Error('这个 PDF 需要打开密码');
-    throw new Error(`无法读取这个 PDF：${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(`无法读取这个 PDF：${errorText(e)}`);
   }
 }
 

@@ -1,6 +1,7 @@
 <script lang="ts">
   import AuthLayout from '../components/AuthLayout.svelte';
   import { api } from '../lib/api';
+  import { errorText } from '../lib/format';
   import { BookOpenText, Languages, LoaderCircle, LogIn, Sparkles, TriangleAlert } from '../lib/icons';
   import { router } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
@@ -19,7 +20,7 @@
       const next = router.query.get('next');
       router.go(next && next.startsWith('/') && !next.startsWith('//') ? next : '/', { replace: true });
     } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
+      error = errorText(e);
     } finally {
       loading = false;
     }

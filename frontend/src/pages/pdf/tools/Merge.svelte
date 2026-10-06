@@ -1,6 +1,7 @@
 <script lang="ts">
   import FilePicker from '../../../components/FilePicker.svelte';
   import Switch from '../../../components/Switch.svelte';
+  import { errorText } from '../../../lib/format';
   import { pdfBlob, readBytes, renamed, type Report } from '../../../lib/pdf/files';
   import { rangeError } from '../../../lib/pdf/ranges';
   import ToolFrame from '../ui/ToolFrame.svelte';
@@ -28,7 +29,7 @@
         try {
           toQpdfRange(pages, pageCount);
         } catch (e) {
-          throw new Error(`「${file.name}」：${e instanceof Error ? e.message : e}`);
+          throw new Error(`「${file.name}」：${errorText(e)}`);
         }
       }
       inputs.push({ bytes, password, pageCount, pages });

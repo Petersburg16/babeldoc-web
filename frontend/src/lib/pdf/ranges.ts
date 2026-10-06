@@ -1,4 +1,5 @@
 // 页码范围与翻译页（backend/app/pages.py）一致：1 起计，逗号分隔，"3-" 到末页，"-5" 从首页；全角逗号和破折号也认。
+import { errorText } from '../format';
 
 export interface PageRange {
   start: number;
@@ -54,7 +55,7 @@ export function rangeError(spec: string, total = Number.MAX_SAFE_INTEGER) {
     parseRanges(spec, total);
     return '';
   } catch (e) {
-    return e instanceof Error ? e.message : String(e);
+    return errorText(e);
   }
 }
 

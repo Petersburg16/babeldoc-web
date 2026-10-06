@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte';
   import { confirm } from '../../lib/confirm.svelte';
-  import { copyText } from '../../lib/format';
+  import { copyText, errorText, isImeEnter } from '../../lib/format';
   import { Bot, CircleAlert, Copy, LoaderCircle, RefreshCw, RotateCcw, Trash2 } from '../../lib/icons';
   import { meetingApi, streamChat } from '../../lib/meeting/api';
   import { fillSpeakers } from '../../lib/meeting/format';
@@ -78,7 +78,7 @@
       entries = (await meetingApi.messages(meeting.id)).map(fromMessage);
       stick = true;
     } catch (e) {
-      loadError = e instanceof Error ? e.message : String(e);
+      loadError = errorText(e);
     } finally {
       loading = false;
     }
@@ -192,8 +192,7 @@
   }
 
   function onkeydown(event: KeyboardEvent) {
-    // 输入法组字时的回车是在确认候选词；Safari 先结束组字再发这个回车，只能靠 keyCode 229 认出来
-    if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229) return;
+    if (event.key !== 'Enter' || event.shiftKey || isImeEnter(event)) return;
     event.preventDefault();
     void send();
   }

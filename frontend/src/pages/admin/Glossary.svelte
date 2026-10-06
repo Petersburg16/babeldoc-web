@@ -2,15 +2,15 @@
   import { onMount } from 'svelte';
   import Modal from '../../components/Modal.svelte';
   import { confirm } from '../../lib/confirm.svelte';
-  import { dateTime } from '../../lib/format';
+  import { dateTime, isImeEnter } from '../../lib/format';
   import { BookA, Info, LoaderCircle, Pencil, Plus, Search, Trash2, TriangleAlert, X } from '../../lib/icons';
   import { meetingApi } from '../../lib/meeting/api';
+  import { MAX_WRONG_FORMS, splitWrongForms } from '../../lib/meeting/format';
   import type { GlossaryTerm } from '../../lib/meeting/types';
   import { toast } from '../../lib/toast.svelte';
 
-  // 与后端一致：腾讯云热词最多 128 个（按添加先后取），每条术语最多 20 个听错写法
+  // 与后端一致：腾讯云热词最多 128 个（按添加先后取）
   const HOTWORD_LIMIT = 128;
-  const MAX_FORMS = 20;
 
   interface Draft {
     id: number | null;
@@ -66,21 +66,18 @@
   /** 把输入框里的内容加进听错写法；用逗号、顿号、分号或换行隔开可以一次加多个 */
   function addPending() {
     if (!draft) return;
-    const items = draft.pending
-      .split(/[,，、;；\n]/)
-      .map((s) => s.trim().slice(0, 64))
-      .filter(Boolean);
+    const items = splitWrongForms(draft.pending);
     let dropped = false;
     for (const item of items) {
       if (item === draft.term.trim() || draft.wrong_forms.includes(item)) continue;
-      if (draft.wrong_forms.length >= MAX_FORMS) {
+      if (draft.wrong_forms.length >= MAX_WRONG_FORMS) {
         dropped = true;
         break;
       }
       draft.wrong_forms.push(item);
     }
     draft.pending = '';
-    if (dropped) toast.error(`每条术语最多 ${MAX_FORMS} 个听错写法`);
+    if (dropped) toast.error(`每条术语最多 ${MAX_WRONG_FORMS} 个听错写法`);
   }
 
   function removeForm(index: number) {
@@ -91,7 +88,7 @@
     if (!draft) return;
     if (event.key === 'Enter') {
       // 中文输入法选词时的回车不算
-      if (event.isComposing || event.keyCode === 229) return;
+      if (isImeEnter(event)) return;
       event.preventDefault();
       addPending();
     } else if (event.key === 'Backspace' && !draft.pending && draft.wrong_forms.length) {
@@ -264,8 +261,8 @@
             class="h-7 min-w-32 flex-1 bg-transparent px-1 text-[14px] text-ink outline-none placeholder:text-muted"
             maxlength={300}
             autocomplete="off"
-            disabled={draft.wrong_forms.length >= MAX_FORMS}
-            placeholder={draft.wrong_forms.length >= MAX_FORMS ? `最多 ${MAX_FORMS} 个` : '输入后按回车添加'}
+            disabled={draft.wrong_forms.length >= MAX_WRONG_FORMS}
+            placeholder={draft.wrong_forms.length >= MAX_WRONG_FORMS ? `最多 ${MAX_WRONG_FORMS} 个` : '输入后按回车添加'}
             bind:value={draft.pending}
             onkeydown={onFormKeydown}
             onblur={addPending}

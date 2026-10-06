@@ -3,6 +3,7 @@
 // 放进 worker 运行（callMain 是同步的，BentoPDF 在主线程跑会卡住页面），参数按实测修正，
 // 前后各加一道 pdf-lib 处理（保住链接、修正中文字体名和文字提取）。一个任务一个 worker，用完即关，释放 WASM 内存。
 import type { PDFDocument, PDFObject } from '@cantoo/pdf-lib';
+import { errorText } from '../../format';
 import { assetUrl } from '../engines.svelte';
 import type { Report } from '../files';
 import { Cancelled, unlockPdf } from '../input';
@@ -147,7 +148,7 @@ export async function eachFile<T extends object>(
     } catch (e) {
       if (e instanceof Cancelled || files.length === 1) throw e;
       console.error(e);
-      failed.push({ name: file.name, message: e instanceof Error ? e.message : String(e) });
+      failed.push({ name: file.name, message: errorText(e) });
     }
   }
   if (!done.length) {

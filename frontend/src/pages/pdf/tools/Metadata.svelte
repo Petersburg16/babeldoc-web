@@ -2,6 +2,7 @@
   import { untrack } from 'svelte';
   import FilePicker from '../../../components/FilePicker.svelte';
   import Switch from '../../../components/Switch.svelte';
+  import { errorText } from '../../../lib/format';
   import { CircleAlert, LoaderCircle, Lock, Plus, RotateCcw, Trash2, TriangleAlert } from '../../../lib/icons';
   import { engines } from '../../../lib/pdf/engines.svelte';
   import { pdfBlob, renamed, type Report } from '../../../lib/pdf/files';
@@ -155,7 +156,7 @@
       else {
         console.error(e);
         // qpdf 的原始报错带着 worker 里的临时文件名（/in.pdf: …），给用户看时去掉
-        const detail = (e instanceof Error ? e.message : String(e))
+        const detail = errorText(e)
           .replace(/^PDF 处理失败：/, '')
           .replace(/\/[^\s:/]+:\s*/g, '');
         loadError = `「${file.name}」读取失败，文件可能已损坏或不是有效的 PDF${detail ? `（${detail}）` : ''}`;

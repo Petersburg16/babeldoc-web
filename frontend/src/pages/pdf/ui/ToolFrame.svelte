@@ -1,7 +1,7 @@
 <script lang="ts">
   import { type Snippet, untrack } from 'svelte';
   import ProgressBar from '../../../components/ProgressBar.svelte';
-  import { bytes } from '../../../lib/format';
+  import { bytes, errorText } from '../../../lib/format';
   import { CircleAlert, LoaderCircle, X } from '../../../lib/icons';
   import { type EngineId, engines } from '../../../lib/pdf/engines.svelte';
   import type { OutputFile, Report } from '../../../lib/pdf/files';
@@ -80,7 +80,7 @@
   $effect(() => () => controller?.abort());
 
   function message(e: unknown) {
-    const raw = e instanceof Error ? e.message : String(e);
+    const raw = errorText(e);
     const name = e instanceof Error || e instanceof DOMException ? e.name : '';
     if (name === 'QuotaExceededError') return '浏览器存储空间不足，引擎无法缓存，请清理磁盘或浏览器数据后重试';
     if (e instanceof TypeError && /fetch|network|load failed/i.test(raw)) {

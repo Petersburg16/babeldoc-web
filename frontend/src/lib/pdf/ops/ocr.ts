@@ -16,6 +16,7 @@ import {
   type PDFPage,
 } from '@cantoo/pdf-lib';
 import { createWorker, type LoggerMessage, OEM, PSM, type Worker as TessWorker } from 'tesseract.js';
+import { errorText } from '../../format';
 import { assetBase, assetUrl } from '../engines.svelte';
 import { closePdf, openPdf, type PdfDoc, pdfjs, releaseCanvas, renderPage } from '../engines/pdfjs';
 import { openPdfLib, savePdfLib } from '../engines/pdflib';
@@ -92,7 +93,7 @@ function abortable<T>(job: Promise<T>, ms: number, signal?: AbortSignal): Promis
 }
 
 /** tesseract.js 抛出的多是字符串 */
-const reason = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/^Error:\s*/, '');
+const reason = (e: unknown) => errorText(e).replace(/^Error:\s*/, '');
 
 /**
  * createWorker 在第一个 await 之前就同步 new Worker()，但要等引擎和语言包都加载好才把它交出来；

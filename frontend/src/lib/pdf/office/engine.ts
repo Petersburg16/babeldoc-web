@@ -6,6 +6,7 @@
 // 字体只能在启动时装入：每个标签页只留一个实例，后面的文档要更多字体就按并集重启；
 // 一个实例同时只能转一个文件，所以全部串行；空闲几分钟后关掉，释放约 1.5 GB 内存。
 import type { FontData, InputFormat, WorkerBrowserConverter } from '@matbee/libreoffice-converter/browser';
+import { errorText } from '../../format';
 import { assetBlobUrl, assetBytes, assetUrl, engines, type Progress } from '../engines.svelte';
 import { Cancelled } from '../input';
 import fcLocalConf from './fc_local.conf?raw';
@@ -126,7 +127,7 @@ export async function startOffice(keys: Set<FontKey>, hooks: StartHooks = {}) {
     if (inst) destroy(inst.conv);
     if (e instanceof Cancelled) throw e;
     console.error(e);
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorText(e);
     if (e instanceof TimeoutError || /timeout/i.test(message)) throw new Error('转换引擎启动超时，请刷新页面后重试');
     throw new Error('转换引擎启动失败，可能是内存不足。请关闭其他标签页，刷新页面后重试');
   } finally {

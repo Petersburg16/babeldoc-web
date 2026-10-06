@@ -3,6 +3,7 @@
 // src/js/utils/images-to-pdf-lib.ts，按本站引擎与界面重写。
 // 两个工具共用这个模块，所以 pdf.js 和 pdf-lib 都在函数里按需加载：图片转 PDF 不必下载 pdf.js，反之亦然。
 import type { PDFImage } from '@cantoo/pdf-lib';
+import { errorText } from '../../format';
 import { type OutputFile, type Report, readBytes, stem } from '../files';
 import { expandRanges } from '../ranges';
 
@@ -286,7 +287,7 @@ export async function imagesToPdf(files: File[], o: ImagesToPdfOptions, report: 
       else if (ori === 3) page.drawImage(img, { x: x + dw, y: y + dh, width: dw, height: dh, rotate: degrees(180) });
       else page.drawImage(img, { x, y, width: dw, height: dh });
     } catch (e) {
-      throw new Error(`「${file.name}」${e instanceof Error ? e.message : String(e)}`);
+      throw new Error(`「${file.name}」${errorText(e)}`);
     }
   }
   report(null, '正在生成 PDF');

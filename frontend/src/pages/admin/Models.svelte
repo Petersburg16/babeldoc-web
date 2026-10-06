@@ -4,6 +4,7 @@
   import Switch from '../../components/Switch.svelte';
   import { api } from '../../lib/api';
   import { confirm } from '../../lib/confirm.svelte';
+  import { errorText } from '../../lib/format';
   import { Bot, ChevronDown, CircleCheck, CircleX, LoaderCircle, Pencil, Plus, RefreshCw, Star, Trash2, Info } from '../../lib/icons';
   import { toast } from '../../lib/toast.svelte';
   import type { ModelAdmin, ModelTest } from '../../lib/types';
@@ -159,7 +160,7 @@
     try {
       tests[m.id] = await api.admin.testModel(m.id);
     } catch (e) {
-      tests[m.id] = { ok: false, error: e instanceof Error ? e.message : String(e), latency_ms: null, status: null, reply: null };
+      tests[m.id] = { ok: false, error: errorText(e), latency_ms: null, status: null, reply: null };
     }
   }
 

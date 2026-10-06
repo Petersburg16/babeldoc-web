@@ -3,9 +3,20 @@
   import Segmented from '../../components/Segmented.svelte';
   import Switch from '../../components/Switch.svelte';
   import { confirm } from '../../lib/confirm.svelte';
+  import { isImeEnter } from '../../lib/format';
   import { LoaderCircle } from '../../lib/icons';
   import { meetingApi } from '../../lib/meeting/api';
-  import { clock, isActive, resolveSpeaker, speakerName, speakerTone } from '../../lib/meeting/format';
+  import {
+    clock,
+    isActive,
+    MAX_WRONG_FORMS,
+    resolveSpeaker,
+    speakerIds,
+    speakerName,
+    speakerResolver,
+    speakerTone,
+    splitWrongForms,
+  } from '../../lib/meeting/format';
   import { LocateFixed, Mic, PenLine, Play, Undo2, WandSparkles } from '../../lib/meeting/icons';
   import type { MeetingDetail, Segment, TranscriptState } from '../../lib/meeting/types';
   import { meetings } from '../../lib/meetings.svelte';
@@ -83,14 +94,10 @@
 
   const blocks = $derived.by(() => {
     const out: Block[] = [];
-    const cache = new Map<string, string>();
+    const resolve = speakerResolver(speakers);
     let current: Block | null = null;
     for (const seg of segments) {
-      let who = cache.get(seg.speaker);
-      if (who === undefined) {
-        who = resolveSpeaker(speakers, seg.speaker);
-        cache.set(seg.speaker, who);
-      }
+      const who = resolve(seg.speaker);
       if (!current || current.speaker !== who || current.items.length >= MAX_BLOCK) {
         current = { key: seg.idx, speaker: who, start: seg.start_ms, first: seg.idx, last: seg.idx, items: [] };
         out.push(current);
@@ -102,20 +109,10 @@
   });
 
   // 句子可以改归到的说话人：没被合并掉的
-  const speakerOptions = $derived.by(() => {
-    const ids = new Set(Object.keys(speakers));
-    for (const seg of segments) ids.add(seg.speaker);
-    return [...ids]
-      .filter((id) => resolveSpeaker(speakers, id) === id)
-      .sort((a, b) => speakerNumber(a) - speakerNumber(b));
-  });
+  const speakerOptions = $derived(speakerIds(speakers, segments).filter((id) => resolveSpeaker(speakers, id) === id));
 
   const focusIdx = $derived(editing ?? selected);
   const editingSeg = $derived(editing === null ? null : findSegment(editing));
-
-  function speakerNumber(id: string) {
-    return Number(id.replace(/^S/, '')) || 0;
-  }
 
   function readFollow() {
     try {
@@ -302,15 +299,6 @@
     editing = null;
   }
 
-  function splitForms(text: string) {
-    const out: string[] = [];
-    for (const item of text.split(/[,，、;；\n]/)) {
-      const value = item.trim().slice(0, 64);
-      if (value && !out.includes(value)) out.push(value);
-    }
-    return out.slice(0, 20);
-  }
-
   async function save() {
     const seg = editingSeg;
     if (!seg || saving) return;
@@ -333,7 +321,7 @@
       if (addTerm && term) {
         await meetingApi.admin.createTerm({
           term,
-          wrong_forms: splitForms(termWrong),
+          wrong_forms: [...new Set(splitWrongForms(termWrong))].slice(0, MAX_WRONG_FORMS),
           note: `校对会议「${meeting.title}」时添加`.slice(0, 255),
         });
         toast.success(`已把「${term}」加入术语表`);
@@ -371,7 +359,7 @@
     if (event.key === 'Escape') {
       event.preventDefault();
       cancelEdit();
-    } else if (event.key === 'Enter' && !event.isComposing && event.keyCode !== 229) {
+    } else if (event.key === 'Enter' && !isImeEnter(event)) {
       event.preventDefault();
       void save();
     }

@@ -1,6 +1,7 @@
 <script lang="ts">
   import AuthLayout from '../components/AuthLayout.svelte';
   import { api } from '../lib/api';
+  import { errorText } from '../lib/format';
   import { LoaderCircle, Lock } from '../lib/icons';
   import { router } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
@@ -32,7 +33,7 @@
       });
       router.go('/', { replace: true });
     } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
+      error = errorText(e);
     } finally {
       loading = false;
     }

@@ -3,7 +3,16 @@
   import { confirm } from '../../lib/confirm.svelte';
   import { LoaderCircle, Sparkles, Users } from '../../lib/icons';
   import { meetingApi } from '../../lib/meeting/api';
-  import { clock, isActive, resolveSpeaker, speakerName, speakerTone, spoken } from '../../lib/meeting/format';
+  import {
+    clock,
+    isActive,
+    resolveSpeaker,
+    speakerIds,
+    speakerName,
+    speakerResolver,
+    speakerTone,
+    spoken,
+  } from '../../lib/meeting/format';
   import { Merge, Play, UserRoundPen } from '../../lib/meeting/icons';
   import type { MeetingDetail, Segment, SpeakerGuess } from '../../lib/meeting/types';
   import { meetings } from '../../lib/meetings.svelte';
@@ -39,13 +48,9 @@
   // 按最终说话人（沿合并关系）统计句数和时长
   const stats = $derived.by(() => {
     const total = new Map<string, Stat>();
-    const cache = new Map<string, string>();
+    const resolve = speakerResolver(speakers);
     for (const seg of segments) {
-      let who = cache.get(seg.speaker);
-      if (who === undefined) {
-        who = resolveSpeaker(speakers, seg.speaker);
-        cache.set(seg.speaker, who);
-      }
+      const who = resolve(seg.speaker);
       const stat = total.get(who) ?? { count: 0, ms: 0, first: seg.start_ms };
       stat.count += 1;
       stat.ms += Math.max(0, seg.end_ms - seg.start_ms);
@@ -55,11 +60,7 @@
     return { total };
   });
 
-  const ids = $derived.by(() => {
-    const all = new Set(Object.keys(speakers));
-    for (const seg of segments) all.add(seg.speaker);
-    return [...all].sort((a, b) => number(a) - number(b));
-  });
+  const ids = $derived(speakerIds(speakers, segments));
   const active = $derived(
     ids.filter(
       (id) => resolveSpeaker(speakers, id) === id && (!segments.length || (stats.total.get(id)?.count ?? 0) > 0),
@@ -79,10 +80,6 @@
   const editing = $derived(editId === null ? null : { id: editId, info: speakers[editId], stat: stats.total.get(editId) });
   const editGuess = $derived(editId === null ? null : pendingGuess(editId));
   const mergeTargets = $derived(editId === null ? [] : active.filter((id) => id !== editId));
-
-  function number(id: string) {
-    return Number(id.replace(/^S/, '')) || 0;
-  }
 
   /** 说话人自己的名字（不沿合并关系），给“已并入”这类需要区分两位的地方用 */
   function ownName(id: string) {

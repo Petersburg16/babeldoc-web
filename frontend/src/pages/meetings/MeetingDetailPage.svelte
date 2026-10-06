@@ -7,7 +7,7 @@
   import Segmented from '../../components/Segmented.svelte';
   import { ApiError } from '../../lib/api';
   import { confirm } from '../../lib/confirm.svelte';
-  import { DAY, dateTime, duration, elapsedSince } from '../../lib/format';
+  import { DAY, dateTime, duration, elapsedSince, errorText, isImeEnter } from '../../lib/format';
   import { Ban, CircleAlert, Clock, Compass, LoaderCircle, Pencil, RotateCcw, Trash2, TriangleAlert } from '../../lib/icons';
   import { retryMeeting } from '../../lib/meeting/actions';
   import { audioUrl, meetingApi } from '../../lib/meeting/api';
@@ -95,7 +95,7 @@
       everLoaded = true;
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) notFound = true;
-      else loadError = e instanceof Error ? e.message : String(e);
+      else loadError = errorText(e);
     }
   }
 
@@ -139,7 +139,7 @@
       segmentsRev = rev;
       segmentsError = '';
     } catch (e) {
-      if (seq === segmentsSeq) segmentsError = e instanceof Error ? e.message : String(e);
+      if (seq === segmentsSeq) segmentsError = errorText(e);
     } finally {
       if (seq === segmentsSeq) segmentsLoading = false;
     }
@@ -223,7 +223,7 @@
     if (event.key === 'Escape') {
       event.preventDefault();
       editingTitle = false;
-    } else if (event.key === 'Enter' && !event.isComposing && event.keyCode !== 229) {
+    } else if (event.key === 'Enter' && !isImeEnter(event)) {
       event.preventDefault();
       void saveTitle();
     }

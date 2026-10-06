@@ -1,4 +1,5 @@
 <script module lang="ts">
+  import { errorText } from '../../lib/format';
   import type { EffortLevel, LlmTestResult } from '../../lib/meeting/types';
 
   /** 思考强度从低到高，和后端 EFFORT_ORDER 一致 */
@@ -29,7 +30,7 @@
       ok: false,
       latency_ms: null,
       reply: null,
-      error: e instanceof Error ? e.message : String(e),
+      error: errorText(e),
       tokens: 0,
       reasoning_tokens: 0,
       finish_reason: null,
@@ -147,10 +148,6 @@
     return 'sk-...';
   });
 
-  function message(e: unknown) {
-    return e instanceof Error ? e.message : String(e);
-  }
-
   function chooseSource(id: number | null) {
     draft.copy_from = id;
     if (id === null) {
@@ -185,7 +182,7 @@
         ? { tone: 'good', text: `拉取到 ${list.length} 个模型，可在“模型名”里选择` }
         : { tone: 'info', text: '接口没有返回模型列表，请手动填写' };
     } catch (e) {
-      probeNote = { tone: 'bad', text: message(e) };
+      probeNote = { tone: 'bad', text: errorText(e) };
     } finally {
       probing = false;
     }
@@ -213,7 +210,7 @@
       draft.efforts_auto = false;
       effortNote = { tone: result.detected.length ? 'good' : 'info', text: result.message };
     } catch (e) {
-      effortNote = { tone: 'bad', text: message(e) };
+      effortNote = { tone: 'bad', text: errorText(e) };
     } finally {
       detecting = false;
     }
@@ -273,7 +270,7 @@
         onsaved(saved, '已保存');
       }
     } catch (e) {
-      error = message(e);
+      error = errorText(e);
       // 报错在表单最底下，滚动到能看见的位置
       await tick();
       errorBox?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });

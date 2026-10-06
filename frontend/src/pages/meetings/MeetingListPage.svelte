@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
+  import { errorText } from '../../lib/format';
   import { AudioLines, CircleAlert, Megaphone, RefreshCw } from '../../lib/icons';
   import { meetings } from '../../lib/meetings.svelte';
   import { session } from '../../lib/session.svelte';
@@ -12,14 +13,12 @@
   let optionsError = $state('');
   let listError = $state('');
 
-  const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
   async function loadOptions() {
     optionsError = '';
     try {
       await meetings.loadOptions();
     } catch (e) {
-      optionsError = message(e);
+      optionsError = errorText(e);
     }
   }
 
@@ -29,7 +28,7 @@
       listError = '';
     } catch (e) {
       if (meetings.loaded) toast.error(e);
-      else listError = message(e);
+      else listError = errorText(e);
     }
   }
 

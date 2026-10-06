@@ -75,6 +75,7 @@
   import Modal from '../../components/Modal.svelte';
   import Switch from '../../components/Switch.svelte';
   import { confirm } from '../../lib/confirm.svelte';
+  import { errorText } from '../../lib/format';
   import { ChevronDown, CircleCheck, CircleX, Copy, FlaskConical, LoaderCircle, Plus, Trash2, TriangleAlert } from '../../lib/icons';
   import { meetingApi } from '../../lib/meeting/api';
   import type { LlmModelAdmin, LlmTestResult, PresetAdmin, PresetSteps } from '../../lib/meeting/types';
@@ -267,7 +268,7 @@
         onsaved('方案已添加，可以在编辑里逐个用途测试');
       }
     } catch (e) {
-      await showError(e instanceof Error ? e.message : String(e));
+      await showError(errorText(e));
     } finally {
       saving = false;
     }

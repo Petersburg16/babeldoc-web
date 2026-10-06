@@ -1,5 +1,5 @@
 import { expiryLabel } from '../format';
-import type { Meeting, MeetingStatus, SpeakerInfo } from './types';
+import type { Meeting, MeetingStatus, Segment, SpeakerInfo } from './types';
 
 /** 毫秒 → 1:02:03 或 02:03 */
 export function clock(ms: number) {
@@ -56,6 +56,31 @@ export function resolveSpeaker(speakers: Record<string, SpeakerInfo>, id: string
   return current;
 }
 
+/** 带缓存的 resolveSpeaker，逐句遍历逐字稿时用：同一个编号只沿合并关系找一次 */
+export function speakerResolver(speakers: Record<string, SpeakerInfo>) {
+  const cache = new Map<string, string>();
+  return (id: string) => {
+    let who = cache.get(id);
+    if (who === undefined) {
+      who = resolveSpeaker(speakers, id);
+      cache.set(id, who);
+    }
+    return who;
+  };
+}
+
+/** 说话人编号：S3 → 3，不是数字时为 0 */
+function speakerNumber(id: string) {
+  return Number(id.replace(/^S/, '')) || 0;
+}
+
+/** 说话人表和逐字稿里出现过的全部说话人（含已合并掉的），按编号排序 */
+export function speakerIds(speakers: Record<string, SpeakerInfo>, segments: Segment[]) {
+  const all = new Set(Object.keys(speakers));
+  for (const seg of segments) all.add(seg.speaker);
+  return [...all].sort((a, b) => speakerNumber(a) - speakerNumber(b));
+}
+
 /** 说话人显示名：已命名用名字，否则“说话人 N” */
 export function speakerName(speakers: Record<string, SpeakerInfo>, id: string) {
   const final = resolveSpeaker(speakers, id);
@@ -81,7 +106,7 @@ const SPEAKER_TONES = [
 ];
 
 export function speakerTone(id: string) {
-  const n = Number(id.replace(/^S/, '')) || 1;
+  const n = speakerNumber(id) || 1;
   return SPEAKER_TONES[(n - 1) % SPEAKER_TONES.length];
 }
 
@@ -131,6 +156,17 @@ const ERROR_KINDS: Record<string, string> = {
 
 export function errorKindLabel(kind: string | null) {
   return kind ? (ERROR_KINDS[kind] ?? kind) : '';
+}
+
+/** 与后端一致：每条术语最多 20 个听错写法，每个最多 64 字 */
+export const MAX_WRONG_FORMS = 20;
+
+/** 拆开输入的听错写法：逗号、顿号、分号或换行都算分隔，去掉首尾空白和空项，每个截到 64 字 */
+export function splitWrongForms(text: string) {
+  return text
+    .split(/[,，、;；\n]/)
+    .map((s) => s.trim().slice(0, 64))
+    .filter(Boolean);
 }
 
 export const AUDIO_ACCEPT =

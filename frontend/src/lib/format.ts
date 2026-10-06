@@ -89,6 +89,16 @@ export function elapsedSince(iso: string | null | undefined, now: number) {
   return (now - new Date(iso).getTime()) / 1000;
 }
 
+/** 捕获到的异常转成给人看的文字 */
+export function errorText(e: unknown) {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/** 输入法组字时的按键，例如确认候选词的回车，不能当成提交；Safari 先结束组字再发这个回车，只能靠 keyCode 229 认出来 */
+export function isImeEnter(event: KeyboardEvent) {
+  return event.isComposing || event.keyCode === 229;
+}
+
 export function greeting() {
   const h = new Date().getHours();
   if (h < 6) return '夜深了';

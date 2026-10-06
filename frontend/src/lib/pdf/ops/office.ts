@@ -2,6 +2,7 @@
 // 再交给 LibreOffice 逐个转换。单个文件失败不影响其他文件，失败原因随结果一起返回。
 // 移植自 BentoPDF（AGPL-3.0）src/js/logic/word-to-pdf.ts、excel-to-pdf-page.ts 等，按本站引擎与界面重写。
 import type { InputFormat } from '@matbee/libreoffice-converter/browser';
+import { errorText } from '../../format';
 import { extension, type OutputFile, pdfBlob, readBytes, type Report, stem } from '../files';
 import { Cancelled } from '../input';
 import { convertOffice, exclusive, OfficeCrash, startOffice } from '../office/engine';
@@ -104,7 +105,7 @@ function outputName(name: string, used: Set<string>) {
 }
 
 function friendlyError(name: string, e: unknown) {
-  const message = e instanceof Error ? e.message : String(e);
+  const message = errorText(e);
   if (e instanceof OfficeCrash || /memory|RangeError|Aborted\(/i.test(message)) {
     return `转换「${name}」时引擎崩溃，可能是内存不足。请关闭其他标签页，或一次少转几个文件后重试`;
   }

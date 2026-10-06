@@ -1,3 +1,5 @@
+import { errorText } from './format';
+
 export type ToastKind = 'success' | 'error' | 'info';
 
 export interface Toast {
@@ -25,7 +27,7 @@ class Toasts {
   }
 
   error(error: unknown) {
-    this.push('error', error instanceof Error ? error.message : String(error));
+    this.push('error', errorText(error));
   }
 
   info(message: string) {

@@ -5,7 +5,7 @@
   import StatusBadge from '../../components/StatusBadge.svelte';
   import { api } from '../../lib/api';
   import { confirm } from '../../lib/confirm.svelte';
-  import { bytes, compact, dateTime, duration, jobStageLabel } from '../../lib/format';
+  import { bytes, compact, dateTime, duration, errorText, jobStageLabel } from '../../lib/format';
   import { Ban, LoaderCircle, RefreshCw, RotateCcw, ScrollText, Search, Trash2 } from '../../lib/icons';
   import { session } from '../../lib/session.svelte';
   import { toast } from '../../lib/toast.svelte';
@@ -86,7 +86,7 @@
     try {
       logText = (await api.admin.jobLog(job.id)).log || '（没有日志）';
     } catch (e) {
-      logText = e instanceof Error ? e.message : String(e);
+      logText = errorText(e);
     } finally {
       logLoading = false;
     }

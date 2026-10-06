@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Component } from 'svelte';
+  import { errorText } from '../lib/format';
   import Logo from './Logo.svelte';
 
   interface Props {
@@ -23,7 +24,7 @@
   <div class="grid place-items-center py-24 text-center">
     <div>
       <p class="font-medium">{label}加载失败</p>
-      <p class="mt-1 text-[13px] text-muted">{error instanceof Error ? error.message : String(error)}</p>
+      <p class="mt-1 text-[13px] text-muted">{errorText(error)}</p>
       <button class="btn btn-secondary mt-5" onclick={() => location.reload()}>刷新重试</button>
     </div>
   </div>

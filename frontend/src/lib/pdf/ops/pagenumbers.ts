@@ -13,6 +13,7 @@ import {
   type PDFFont,
   type PDFPage,
 } from '@cantoo/pdf-lib';
+import { errorText } from '../../format';
 import { assetBytes } from '../engines.svelte';
 import type { Report } from '../files';
 import { type CjkFont, fontForText, needsCjkFont, openPdfLib, ownResources } from '../engines/pdflib';
@@ -92,7 +93,7 @@ export async function addPageNumbers(bytes: Uint8Array, o: PageNumberOptions, re
     // 按文档顺序编号，“5-,1”也是先第 1 页
     targets = (o.pages.trim() ? expandRanges(o.pages, pages.length) : pages.map((_, i) => i)).sort((a, b) => a - b);
   } catch (e) {
-    throw new Error(`要加页码的页有误：${e instanceof Error ? e.message : e}（这个文件共 ${pages.length} 页）`);
+    throw new Error(`要加页码的页有误：${errorText(e)}（这个文件共 ${pages.length} 页）`);
   }
   // N 取最后一个印出来的数字：跳过封面并从 2 起编时，末页是“第 10 页 / 共 10 页”而不是“共 9 页”
   const last = o.start + targets.length - 1;
