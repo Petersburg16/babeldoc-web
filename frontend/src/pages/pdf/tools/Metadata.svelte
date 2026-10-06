@@ -1,12 +1,12 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import FilePicker from '../../../components/FilePicker.svelte';
   import Switch from '../../../components/Switch.svelte';
   import { CircleAlert, LoaderCircle, Lock, Plus, RotateCcw, Trash2, TriangleAlert } from '../../../lib/icons';
   import { engines } from '../../../lib/pdf/engines.svelte';
   import { pdfBlob, renamed, type Report } from '../../../lib/pdf/files';
   import { Cancelled, unlockPdf } from '../../../lib/pdf/input';
   import type { MetadataEdit, PdfMetadata, TextField } from '../../../lib/pdf/ops/metadata';
-  import FilePicker from '../ui/FilePicker.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   const TEXT: { id: TextField; label: string; wide?: boolean; hint?: string }[] = [

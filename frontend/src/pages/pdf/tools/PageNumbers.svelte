@@ -1,11 +1,11 @@
 <script lang="ts">
+  import FilePicker from '../../../components/FilePicker.svelte';
   import { bytes } from '../../../lib/format';
   import { type EngineId, engines } from '../../../lib/pdf/engines.svelte';
   import { CJK_FONTS, type CjkFont } from '../../../lib/pdf/engines/pdflib';
   import { pdfBlob, renamed, type Report } from '../../../lib/pdf/files';
   import type { Align, NumberFormat, Vertical } from '../../../lib/pdf/ops/pagenumbers';
   import { rangeError } from '../../../lib/pdf/ranges';
-  import FilePicker from '../ui/FilePicker.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   const FORMATS: { id: NumberFormat; label: (n: number) => string; zh?: boolean }[] = [

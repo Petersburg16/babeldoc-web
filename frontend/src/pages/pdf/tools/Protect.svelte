@@ -1,4 +1,5 @@
 <script lang="ts">
+  import FilePicker from '../../../components/FilePicker.svelte';
   import Segmented from '../../../components/Segmented.svelte';
   import Switch from '../../../components/Switch.svelte';
   import { copyText } from '../../../lib/format';
@@ -14,7 +15,6 @@
     type PrintLevel,
   } from '../../../lib/pdf/ops/security';
   import { toast } from '../../../lib/toast.svelte';
-  import FilePicker from '../ui/FilePicker.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   let files = $state<File[]>([]);

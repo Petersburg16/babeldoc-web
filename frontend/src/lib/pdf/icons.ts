@@ -1,13 +1,10 @@
 // PDF 工具专用图标，单独成模块，只随 PDF 工具一起加载。通用图标从 ../icons 导入。
-export { default as ArrowDown } from '@lucide/svelte/icons/arrow-down';
 export { default as ArrowLeft } from '@lucide/svelte/icons/arrow-left';
-export { default as ArrowUp } from '@lucide/svelte/icons/arrow-up';
 export { default as CloudDownload } from '@lucide/svelte/icons/cloud-download';
 export { default as Combine } from '@lucide/svelte/icons/combine';
 export { default as Droplets } from '@lucide/svelte/icons/droplets';
 export { default as FileImage } from '@lucide/svelte/icons/file-image';
 export { default as FileSpreadsheet } from '@lucide/svelte/icons/file-spreadsheet';
-export { default as GripVertical } from '@lucide/svelte/icons/grip-vertical';
 export { default as Hash } from '@lucide/svelte/icons/hash';
 export { default as ImagePlus } from '@lucide/svelte/icons/image-plus';
 export { default as Images } from '@lucide/svelte/icons/images';

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
   import { SvelteMap } from 'svelte/reactivity';
+  import FilePicker from '../../../components/FilePicker.svelte';
   import ProgressBar from '../../../components/ProgressBar.svelte';
   import { confirm } from '../../../lib/confirm.svelte';
   import { CircleAlert, Copy, LoaderCircle, RotateCcw, Trash2 } from '../../../lib/icons';
@@ -11,7 +12,6 @@
   import type { PageInfo, PageSource, Slot } from '../../../lib/pdf/ops/organize';
   import { passwordState } from '../../../lib/pdf/password.svelte';
   import { toast } from '../../../lib/toast.svelte';
-  import FilePicker from '../ui/FilePicker.svelte';
   import PageGrid, { duplicateSlots, newSlotId, rotateSlots, shownSize } from '../ui/PageGrid.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 

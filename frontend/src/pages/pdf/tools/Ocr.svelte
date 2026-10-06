@@ -1,4 +1,5 @@
 <script lang="ts">
+  import FilePicker from '../../../components/FilePicker.svelte';
   import Segmented from '../../../components/Segmented.svelte';
   import Switch from '../../../components/Switch.svelte';
   import { copyText, duration } from '../../../lib/format';
@@ -7,7 +8,6 @@
   import type { OcrLanguage, OcrResult } from '../../../lib/pdf/ops/ocr';
   import { rangeError } from '../../../lib/pdf/ranges';
   import { toast } from '../../../lib/toast.svelte';
-  import FilePicker from '../ui/FilePicker.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   let files = $state<File[]>([]);

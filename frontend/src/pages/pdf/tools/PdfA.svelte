@@ -1,11 +1,11 @@
 <script lang="ts">
+  import FilePicker from '../../../components/FilePicker.svelte';
   import Segmented from '../../../components/Segmented.svelte';
   import Switch from '../../../components/Switch.svelte';
   import { TriangleAlert } from '../../../lib/icons';
   import type { FileFailure } from '../../../lib/pdf/engines/gs';
   import type { OutputFile, Report } from '../../../lib/pdf/files';
   import type { PdfALevel, PdfAOutcome } from '../../../lib/pdf/ops/pdfa';
-  import FilePicker from '../ui/FilePicker.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   const LEVELS: { value: PdfALevel; label: string; hint: string }[] = [

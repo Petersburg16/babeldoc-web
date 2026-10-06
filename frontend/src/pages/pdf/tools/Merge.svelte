@@ -1,8 +1,8 @@
 <script lang="ts">
+  import FilePicker from '../../../components/FilePicker.svelte';
   import Switch from '../../../components/Switch.svelte';
   import { pdfBlob, readBytes, renamed, type Report } from '../../../lib/pdf/files';
   import { rangeError } from '../../../lib/pdf/ranges';
-  import FilePicker from '../ui/FilePicker.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   let files = $state<File[]>([]);

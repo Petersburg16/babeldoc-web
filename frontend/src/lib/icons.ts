@@ -1,4 +1,6 @@
+export { default as ArrowDown } from '@lucide/svelte/icons/arrow-down';
 export { default as ArrowLeftRight } from '@lucide/svelte/icons/arrow-left-right';
+export { default as ArrowUp } from '@lucide/svelte/icons/arrow-up';
 export { default as AudioLines } from '@lucide/svelte/icons/audio-lines';
 export { default as AudioWaveform } from '@lucide/svelte/icons/audio-waveform';
 export { default as Ban } from '@lucide/svelte/icons/ban';
@@ -22,6 +24,7 @@ export { default as FileText } from '@lucide/svelte/icons/file-text';
 export { default as FileUp } from '@lucide/svelte/icons/file-up';
 export { default as FlaskConical } from '@lucide/svelte/icons/flask-conical';
 export { default as Gauge } from '@lucide/svelte/icons/gauge';
+export { default as GripVertical } from '@lucide/svelte/icons/grip-vertical';
 export { default as HardDrive } from '@lucide/svelte/icons/hard-drive';
 export { default as Info } from '@lucide/svelte/icons/info';
 export { default as KeyRound } from '@lucide/svelte/icons/key-round';

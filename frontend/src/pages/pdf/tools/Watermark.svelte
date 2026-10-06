@@ -1,4 +1,5 @@
 <script lang="ts">
+  import FilePicker from '../../../components/FilePicker.svelte';
   import Segmented from '../../../components/Segmented.svelte';
   import { bytes } from '../../../lib/format';
   import { Info, TriangleAlert, X } from '../../../lib/icons';
@@ -8,7 +9,6 @@
   import { CloudDownload, ImagePlus } from '../../../lib/pdf/icons';
   import type { Watermark } from '../../../lib/pdf/ops/watermark';
   import { rangeError } from '../../../lib/pdf/ranges';
-  import FilePicker from '../ui/FilePicker.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   type Kind = 'text' | 'image';

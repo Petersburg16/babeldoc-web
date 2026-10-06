@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
+  import FilePicker from '../../../components/FilePicker.svelte';
   import Switch from '../../../components/Switch.svelte';
   import { TriangleAlert } from '../../../lib/icons';
   import { engines } from '../../../lib/pdf/engines.svelte';
@@ -8,7 +9,6 @@
   import { Cancelled } from '../../../lib/pdf/input';
   import { ALL_FONT_KEYS, fontEngineIds } from '../../../lib/pdf/office/fonts';
   import type { OfficeFailure } from '../../../lib/pdf/ops/office';
-  import FilePicker from '../ui/FilePicker.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   const ACCEPT = '.docx,.doc,.xlsx,.xls,.pptx,.ppt,.odt,.ods,.odp,.rtf,.txt,.csv';

@@ -1,10 +1,10 @@
 <script lang="ts">
+  import FilePicker from '../../../components/FilePicker.svelte';
   import Segmented from '../../../components/Segmented.svelte';
   import { bytes } from '../../../lib/format';
   import type { FileFailure } from '../../../lib/pdf/engines/gs';
   import type { OutputFile, Report } from '../../../lib/pdf/files';
   import type { CompressLevel, CompressOutcome } from '../../../lib/pdf/ops/compress';
-  import FilePicker from '../ui/FilePicker.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   const LEVELS: { value: CompressLevel; label: string; hint: string }[] = [

@@ -1,10 +1,10 @@
 <script lang="ts">
+  import FilePicker from '../../../components/FilePicker.svelte';
   import Segmented from '../../../components/Segmented.svelte';
   import { LoaderCircle } from '../../../lib/icons';
   import { pdfBlob, renamed, type Report } from '../../../lib/pdf/files';
   import type { Angle, PdfInfo } from '../../../lib/pdf/ops/split';
   import { rangeError } from '../../../lib/pdf/ranges';
-  import FilePicker from '../ui/FilePicker.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   type AngleValue = '90' | '180' | '270';

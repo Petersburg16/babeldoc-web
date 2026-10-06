@@ -1,8 +1,8 @@
 <script lang="ts">
+  import FilePicker from '../../../components/FilePicker.svelte';
   import Segmented from '../../../components/Segmented.svelte';
   import { pdfBlob, stem, type Report } from '../../../lib/pdf/files';
   import type { Orientation, PaperSize } from '../../../lib/pdf/ops/images';
-  import FilePicker from '../ui/FilePicker.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   // 浏览器能解码的常见格式。HEIC、TIFF 不放进 accept（accept 含 HEIC 时 iOS 不再把相册照片自动转成 JPEG），

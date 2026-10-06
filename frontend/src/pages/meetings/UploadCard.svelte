@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import FilePicker from '../../components/FilePicker.svelte';
   import ProgressBar from '../../components/ProgressBar.svelte';
   import {
     Ban,
@@ -15,7 +16,6 @@
   import { Mic, ShieldCheck } from '../../lib/meeting/icons';
   import type { ProviderPublic } from '../../lib/meeting/types';
   import { meetings } from '../../lib/meetings.svelte';
-  import FilePicker from '../pdf/ui/FilePicker.svelte';
   import { probeDuration, upload } from './uploadTask.svelte';
 
   interface Props {

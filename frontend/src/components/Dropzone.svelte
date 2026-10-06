@@ -1,6 +1,7 @@
 <script lang="ts">
   import { bytes } from '../lib/format';
   import { FileText, FileUp, X } from '../lib/icons';
+  import { addFiles } from '../lib/picker';
   import { toast } from '../lib/toast.svelte';
 
   interface Props {
@@ -22,14 +23,7 @@
     const incoming = Array.from(list);
     const pdfs = incoming.filter((f) => f.name.toLowerCase().endsWith('.pdf') || f.type === 'application/pdf');
     if (pdfs.length < incoming.length) toast.info('已忽略非 PDF 文件');
-    const tooBig = pdfs.filter((f) => f.size > maxMb * 1024 * 1024);
-    if (tooBig.length) toast.error(`${tooBig.map((f) => f.name).join('、')} 超过 ${maxMb} MB，未添加`);
-    const fresh = pdfs.filter(
-      (f) => f.size <= maxMb * 1024 * 1024 && !files.some((x) => x.name === f.name && x.size === f.size),
-    );
-    const room = maxFiles - files.length;
-    if (fresh.length > room) toast.info(`一次最多 ${maxFiles} 个文件，多出的已忽略`);
-    files = [...files, ...fresh.slice(0, Math.max(0, room))];
+    files = addFiles(files, pdfs, { maxMb, maxFiles, tooMany: `一次最多 ${maxFiles} 个文件，多出的已忽略` });
   }
 
   function onDrop(event: DragEvent) {

@@ -1,7 +1,7 @@
 <script lang="ts">
+  import FilePicker from '../../../components/FilePicker.svelte';
   import { renamed, type Report } from '../../../lib/pdf/files';
   import { expandRanges, rangeError } from '../../../lib/pdf/ranges';
-  import FilePicker from '../ui/FilePicker.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   let files = $state<File[]>([]);

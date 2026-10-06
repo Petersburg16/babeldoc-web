@@ -1,11 +1,11 @@
 <script lang="ts">
+  import FilePicker from '../../../components/FilePicker.svelte';
   import { CircleAlert, CircleCheck, Eye, KeyRound, LoaderCircle, RefreshCw, Shield } from '../../../lib/icons';
   import { engines } from '../../../lib/pdf/engines.svelte';
   import { pdfBlob, readBytes, renamed, type Report } from '../../../lib/pdf/files';
   import { EyeOff, LockOpen } from '../../../lib/pdf/icons';
   import { Cancelled } from '../../../lib/pdf/input';
   import type { EncryptionState } from '../../../lib/pdf/ops/security';
-  import FilePicker from '../ui/FilePicker.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   type Check =

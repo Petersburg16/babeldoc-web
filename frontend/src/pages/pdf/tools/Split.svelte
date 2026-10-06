@@ -1,10 +1,10 @@
 <script lang="ts">
+  import FilePicker from '../../../components/FilePicker.svelte';
   import Segmented from '../../../components/Segmented.svelte';
   import { LoaderCircle } from '../../../lib/icons';
   import { stem, type Report } from '../../../lib/pdf/files';
   import type { PdfInfo, SplitMode } from '../../../lib/pdf/ops/split';
   import { parseRanges, rangeError } from '../../../lib/pdf/ranges';
-  import FilePicker from '../ui/FilePicker.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   const MODES: { value: SplitMode; label: string; hint: string }[] = [

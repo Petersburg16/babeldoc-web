@@ -1,9 +1,9 @@
 <script lang="ts">
+  import FilePicker from '../../../components/FilePicker.svelte';
   import Segmented from '../../../components/Segmented.svelte';
   import { readBytes, stem, type Report } from '../../../lib/pdf/files';
   import type { ImageFormat } from '../../../lib/pdf/ops/images';
   import { rangeError } from '../../../lib/pdf/ranges';
-  import FilePicker from '../ui/FilePicker.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   let files = $state<File[]>([]);

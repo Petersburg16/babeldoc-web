@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { bytes } from '../../../lib/format';
-  import { FileUp, X } from '../../../lib/icons';
-  import { ArrowDown, ArrowUp, GripVertical } from '../../../lib/pdf/icons';
-  import { toast } from '../../../lib/toast.svelte';
+  import { bytes } from '../lib/format';
+  import { ArrowDown, ArrowUp, FileUp, GripVertical, X } from '../lib/icons';
+  import { addFiles } from '../lib/picker';
+  import { toast } from '../lib/toast.svelte';
 
   interface Props {
     files: File[];
@@ -57,18 +57,9 @@
     const incoming = Array.from(list);
     const ok = incoming.filter(accepts);
     if (ok.length < incoming.length) toast.info(`已忽略不是${kindText}的文件`);
-    const tooBig = ok.filter((f) => f.size > maxMb * 1024 * 1024);
-    if (tooBig.length) toast.error(`${tooBig.map((f) => f.name).join('、')} 超过 ${maxMb} MB，未添加`);
-    const fresh = ok.filter(
-      (f) => f.size <= maxMb * 1024 * 1024 && !files.some((x) => x.name === f.name && x.size === f.size),
-    );
-    if (!multiple) {
-      if (fresh.length) files = [fresh[0]];
-      return;
-    }
-    const room = maxFiles - files.length;
-    if (fresh.length > room) toast.info(`最多 ${maxFiles} 个文件，多出的已忽略`);
-    files = [...files, ...fresh.slice(0, Math.max(0, room))];
+    const next = addFiles(files, ok, { maxMb, maxFiles, single: !multiple });
+    // 单文件模式下没有可换的新文件时不重新赋值：工具页按 files 变化清空结果
+    if (next !== files) files = next;
   }
 
   function move(from: number, to: number) {
