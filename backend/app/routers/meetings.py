@@ -19,7 +19,7 @@ from ..defaults import default_or_first
 from ..deps import AppContext, CtxDep, DbDep, UserDep
 from ..meeting.asr import available_kinds
 from ..meeting.llm_config import find_preset
-from ..meeting.manager import source_name
+from ..meeting.manager import reset_for_retry, source_name
 from ..meeting.media import AUDIO_NAME
 from ..meeting.schemas import (
     MeetingCreate,
@@ -346,7 +346,7 @@ def retry_meeting(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> Mee
     if has_segments:
         status = "processing"
     elif (directory / AUDIO_NAME).is_file() and parts:
-        parts = [retry_part(p, directory) for p in parts]
+        parts = [reset_for_retry(p, directory) for p in parts]
         status = "transcribing"
     elif (directory / source_name(m.filename)).is_file():
         status = "queued"
@@ -374,26 +374,6 @@ def retry_meeting(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> Mee
     ctx.meetings.request_launch(meeting_id)
     db.refresh(m)
     return ctx.meetings.meeting_out(m, load_settings(db).file_retention_days)
-
-
-def retry_part(part: dict, directory: Path) -> dict:
-    """重试时一个分段怎么处理：结果已在盘上的算完成；服务商明确失败（final）或根本没提交上的重新提交；
-    其余（断网、被一起取消、我方出错）保留任务号，接着查同一个任务，不重复计费。"""
-    raw = str(part.get("raw") or f"asr-{part.get('index', 0)}.json")
-    if (directory / raw).is_file():
-        return {**part, "state": "done", "raw": raw, "error": None}
-    if part.get("final") or not part.get("task_id"):
-        return {
-            **part,
-            "state": "pending",
-            "task_id": None,
-            "token": None,
-            "token_exp": None,
-            "submitted_at": None,
-            "error": None,
-            "final": False,
-        }
-    return {**part, "state": "submitted", "error": None}
 
 
 @router.delete("/{meeting_id}", status_code=204)

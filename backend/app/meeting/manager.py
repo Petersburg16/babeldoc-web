@@ -491,11 +491,11 @@ class MeetingManager:
         on_progress: Callable[[float], None],
     ) -> None:
         part = self._part(meeting_id, index)
-        raw_name = f"asr-{index}.json"
-        if (self.meeting_dir(meeting_id) / raw_name).is_file():
+        raw = raw_name(index)
+        if (self.meeting_dir(meeting_id) / raw).is_file():
             # 结果已经落盘（可能是写完后、改状态前被打断）：不必再查
             if part.get("state") != "done":
-                self._update_part(meeting_id, index, state="done", raw=raw_name, error=None)
+                self._update_part(meeting_id, index, state="done", raw=raw, error=None)
             on_progress(1.0)
             return
         task_id = part.get("task_id")
@@ -555,10 +555,10 @@ class MeetingManager:
                 self._update_part(meeting_id, index, state="failed", final=kind == "input", error=str(e))
                 raise StageError(f"查询识别结果失败：{e}", _kind(kind)) from e
             if result.state == "done":
-                path = self.meeting_dir(meeting_id) / raw_name
+                path = self.meeting_dir(meeting_id) / raw
                 data = json.dumps(result.raw, ensure_ascii=False)
                 await asyncio.to_thread(path.write_text, data, "utf-8")
-                self._update_part(meeting_id, index, state="done", raw=raw_name, error=None)
+                self._update_part(meeting_id, index, state="done", raw=raw, error=None)
                 on_progress(1.0)
                 return
             if result.state == "failed":
@@ -939,21 +939,46 @@ class MeetingManager:
             )
 
 
+def raw_name(index: int) -> str:
+    """分段识别结果在会议目录里的文件名。"""
+    return f"asr-{index}.json"
+
+
+# 还没提交给服务商时分段的这几个字段：新建分段、重试时需要重新提交的分段都写成这样
+_UNSUBMITTED: dict[str, Any] = {
+    "state": "pending",
+    "task_id": None,
+    "token": None,
+    "token_exp": None,
+    "submitted_at": None,
+    "error": None,
+    "final": False,
+}
+
+
 def _new_part(index: int, offset_ms: int, duration_ms: int, file: str) -> dict[str, Any]:
     return {
         "index": index,
         "offset_ms": offset_ms,
         "duration_ms": duration_ms,
         "file": file,
-        "state": "pending",
-        "task_id": None,
-        "token": None,
-        "token_exp": None,
-        "submitted_at": None,
         "raw": None,
-        "error": None,
-        "final": False,
+        **_UNSUBMITTED,
     }
+
+
+def reset_for_retry(part: dict[str, Any], directory: Path) -> dict[str, Any]:
+    """重试时一个分段怎么处理：结果已在盘上的算完成；服务商明确失败（final）或根本没提交上的重新提交；
+    其余（断网、被一起取消、我方出错）保留任务号，接着查同一个任务，不重复计费。
+
+    final 由 _run_part 在失败时写下：为真表示这个任务已经拿不回结果（或根本没建成），只能重新提交。
+    """
+    raw = str(part.get("raw") or raw_name(part.get("index", 0)))
+    if (directory / raw).is_file():
+        return {**part, "state": "done", "raw": raw, "error": None}
+    if part.get("final") or not part.get("task_id"):
+        return {**part, **_UNSUBMITTED}
+    return {**part, "state": "submitted", "error": None}
 
 
 def _span(span: tuple[float, float], ratio: float) -> float:
