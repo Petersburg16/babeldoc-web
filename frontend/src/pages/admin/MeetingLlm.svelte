@@ -1,11 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import EmptyState from '../../components/admin/EmptyState.svelte';
+  import EntityCard from '../../components/admin/EntityCard.svelte';
+  import ResultNote from '../../components/admin/ResultNote.svelte';
   import { api } from '../../lib/api';
   import { confirm } from '../../lib/confirm.svelte';
   import {
     BrainCircuit,
-    CircleCheck,
-    CircleX,
     FlaskConical,
     Info,
     LoaderCircle,
@@ -163,19 +164,8 @@
         <div class="grid gap-4 lg:grid-cols-2">
           {#each models as m (m.id)}
             {@const result = tests[m.id]}
-            <div class="card flex flex-col p-5 {m.enabled ? '' : 'opacity-65'}">
-              <div class="flex items-start gap-3">
-                <div class="grid size-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent"><BrainCircuit class="size-5" /></div>
-                <div class="min-w-0 flex-1">
-                  <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <h3 class="truncate text-[15px] font-semibold">{m.name}</h3>
-                    {#if !m.enabled}<span class="rounded-full bg-surface-3 px-2 py-0.5 text-[11.5px] text-muted">已停用</span>{/if}
-                  </div>
-                  {#if m.description}<p class="mt-0.5 text-[12.5px] text-muted">{m.description}</p>{/if}
-                </div>
-              </div>
-
-              <dl class="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[12.5px]">
+            <EntityCard icon={BrainCircuit} name={m.name} description={m.description} enabled={m.enabled}>
+              {#snippet details()}
                 <dt class="text-muted">接口地址</dt>
                 <dd class="truncate font-mono text-[12px] text-muted" title={m.base_url}>{m.base_url || 'https://api.openai.com/v1'}</dd>
                 <dt class="text-muted">模型</dt>
@@ -200,16 +190,13 @@
                 <dd class="truncate {m.used_by.length ? '' : 'text-muted'}" title={m.used_by.join('、')}>
                   {m.used_by.length ? m.used_by.join('、') : '还没有方案用它'}
                 </dd>
-              </dl>
-
-              {#if result && result !== 'running'}
-                <div class="mt-3 flex gap-2 rounded-xl px-3 py-2 text-[12.5px] {result.ok ? 'bg-good-soft text-good-ink' : 'bg-bad-soft text-bad-ink'}">
-                  {#if result.ok}<CircleCheck class="mt-0.5 size-4 shrink-0" />{:else}<CircleX class="mt-0.5 size-4 shrink-0" />{/if}
-                  <p class="min-w-0 break-words">{testSummary(result)}</p>
-                </div>
-              {/if}
-
-              <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+              {/snippet}
+              {#snippet notes()}
+                {#if result && result !== 'running'}
+                  <ResultNote ok={result.ok} text={testSummary(result)} />
+                {/if}
+              {/snippet}
+              {#snippet actions()}
                 <button
                   class="btn btn-secondary btn-sm"
                   disabled={result === 'running'}
@@ -224,19 +211,17 @@
                 <button class="btn btn-ghost btn-sm btn-icon ml-auto text-bad-ink" title="删除" aria-label="删除" onclick={() => removeModel(m)}>
                   <Trash2 class="size-4" />
                 </button>
-              </div>
-            </div>
+              {/snippet}
+            </EntityCard>
           {/each}
         </div>
       {:else}
-        <div class="card flex flex-col items-center px-6 py-14 text-center">
-          <div class="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent"><BrainCircuit class="size-6" /></div>
-          <p class="mt-4 font-medium">还没有会议用的大模型</p>
-          <p class="mt-1 max-w-sm text-[13px] text-muted">
-            添加一个 OpenAI 兼容的接口，可以直接复制翻译模型的地址和 Key。会议记录要靠它识别说话人、整理逐字稿、写纪要。
-          </p>
-          <button class="btn btn-primary mt-5" onclick={() => (editingModel = 'new')}><Plus class="size-4" />添加模型</button>
-        </div>
+        <EmptyState
+          icon={BrainCircuit}
+          title="还没有会议用的大模型"
+          text="添加一个 OpenAI 兼容的接口，可以直接复制翻译模型的地址和 Key。会议记录要靠它识别说话人、整理逐字稿、写纪要。"
+          action={{ label: '添加模型', onclick: () => (editingModel = 'new') }}
+        />
       {/if}
     </section>
 
@@ -257,24 +242,15 @@
       {#if presets.length}
         <div class="grid gap-4 lg:grid-cols-2">
           {#each presets as p (p.id)}
-            <div class="card flex flex-col p-5 {p.enabled ? '' : 'opacity-65'}">
-              <div class="flex items-start gap-3">
-                <div class="grid size-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent"><SlidersHorizontal class="size-5" /></div>
-                <div class="min-w-0 flex-1">
-                  <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <h3 class="truncate text-[15px] font-semibold">{p.name}</h3>
-                    {#if p.is_default}
-                      <span class="inline-flex items-center gap-1 rounded-full bg-warn-soft px-2 py-0.5 text-[11.5px] font-medium text-warn-ink">
-                        <Star class="size-3" />默认
-                      </span>
-                    {/if}
-                    {#if !p.enabled}<span class="rounded-full bg-surface-3 px-2 py-0.5 text-[11.5px] text-muted">已停用</span>{/if}
-                  </div>
-                  {#if p.description}<p class="mt-0.5 text-[12.5px] text-muted">{p.description}</p>{/if}
-                </div>
-              </div>
-
-              <dl class="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-[12.5px]">
+            <EntityCard
+              icon={SlidersHorizontal}
+              name={p.name}
+              description={p.description}
+              enabled={p.enabled}
+              isDefault={p.is_default}
+              spacious
+            >
+              {#snippet details()}
                 {#each STEPS as step (step)}
                   {@const sc = p.steps[step]}
                   {@const m = sc.model_id !== null ? modelMap.get(sc.model_id) : undefined}
@@ -291,18 +267,18 @@
                     {/each}
                   </dd>
                 {/each}
-              </dl>
-
-              {#if p.problems.length}
-                <div class="mt-3 flex gap-2 rounded-xl bg-warn-soft px-3 py-2 text-[12.5px] text-warn-ink">
-                  <TriangleAlert class="mt-0.5 size-4 shrink-0" />
-                  <ul class="min-w-0 space-y-0.5 break-words">
-                    {#each p.problems as problem, i (i)}<li>{problem}</li>{/each}
-                  </ul>
-                </div>
-              {/if}
-
-              <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+              {/snippet}
+              {#snippet notes()}
+                {#if p.problems.length}
+                  <div class="mt-3 flex gap-2 rounded-xl bg-warn-soft px-3 py-2 text-[12.5px] text-warn-ink">
+                    <TriangleAlert class="mt-0.5 size-4 shrink-0" />
+                    <ul class="min-w-0 space-y-0.5 break-words">
+                      {#each p.problems as problem, i (i)}<li>{problem}</li>{/each}
+                    </ul>
+                  </div>
+                {/if}
+              {/snippet}
+              {#snippet actions()}
                 <button class="btn btn-secondary btn-sm" onclick={() => (editingPreset = p)}><Pencil class="size-3.5" />编辑</button>
                 {#if !p.is_default && p.enabled}
                   <button class="btn btn-ghost btn-sm" onclick={() => patchPreset(p, { is_default: true })}><Star class="size-3.5" />设为默认</button>
@@ -311,23 +287,19 @@
                 <button class="btn btn-ghost btn-sm btn-icon ml-auto text-bad-ink" title="删除" aria-label="删除" onclick={() => removePreset(p)}>
                   <Trash2 class="size-4" />
                 </button>
-              </div>
-            </div>
+              {/snippet}
+            </EntityCard>
           {/each}
         </div>
       {:else}
-        <div class="card flex flex-col items-center px-6 py-14 text-center">
-          <div class="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent"><SlidersHorizontal class="size-6" /></div>
-          <p class="mt-4 font-medium">还没有整理方案</p>
-          <p class="mt-1 max-w-sm text-[13px] text-muted">
-            {models.length
-              ? '方案决定识别说话人、整理逐字稿、生成纪要和对话问答各用哪个模型、什么参数。没有方案时会议没法整理。'
-              : '先在上面添加模型，再把模型组合成方案。添加模型时也可以顺带建一个方案。'}
-          </p>
-          {#if models.length}
-            <button class="btn btn-primary mt-5" onclick={() => (editingPreset = 'new')}><Plus class="size-4" />添加方案</button>
-          {/if}
-        </div>
+        <EmptyState
+          icon={SlidersHorizontal}
+          title="还没有整理方案"
+          text={models.length
+            ? '方案决定识别说话人、整理逐字稿、生成纪要和对话问答各用哪个模型、什么参数。没有方案时会议没法整理。'
+            : '先在上面添加模型，再把模型组合成方案。添加模型时也可以顺带建一个方案。'}
+          action={models.length ? { label: '添加方案', onclick: () => (editingPreset = 'new') } : undefined}
+        />
       {/if}
     </section>
   {/if}

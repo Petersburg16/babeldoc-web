@@ -1,11 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import EmptyState from '../../components/admin/EmptyState.svelte';
+  import EntityCard from '../../components/admin/EntityCard.svelte';
+  import ResultNote from '../../components/admin/ResultNote.svelte';
   import Modal from '../../components/Modal.svelte';
   import Switch from '../../components/Switch.svelte';
   import { api } from '../../lib/api';
   import { confirm } from '../../lib/confirm.svelte';
   import { errorText } from '../../lib/format';
-  import { Bot, ChevronDown, CircleCheck, CircleX, LoaderCircle, Pencil, Plus, RefreshCw, Star, Trash2, Info } from '../../lib/icons';
+  import { Bot, ChevronDown, LoaderCircle, Pencil, Plus, RefreshCw, Star, Trash2, Info } from '../../lib/icons';
   import { toast } from '../../lib/toast.svelte';
   import type { ModelAdmin, ModelTest } from '../../lib/types';
 
@@ -155,6 +158,12 @@
     }
   }
 
+  function testText(r: ModelTest) {
+    return r.ok
+      ? `连接正常 · ${((r.latency_ms ?? 0) / 1000).toFixed(1)} 秒 · 回复：${r.reply || '（空）'}`
+      : `${r.status ? `HTTP ${r.status} · ` : ''}${r.error ?? ''}`;
+  }
+
   async function test(m: ModelAdmin) {
     tests[m.id] = 'running';
     try {
@@ -203,24 +212,8 @@
     <div class="grid gap-4 lg:grid-cols-2">
       {#each models as m (m.id)}
         {@const result = tests[m.id]}
-        <div class="card flex flex-col p-5 {m.enabled ? '' : 'opacity-65'}">
-          <div class="flex items-start gap-3">
-            <div class="grid size-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent"><Bot class="size-5" /></div>
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2">
-                <h3 class="truncate text-[15px] font-semibold">{m.name}</h3>
-                {#if m.is_default}
-                  <span class="inline-flex items-center gap-1 rounded-full bg-warn-soft px-2 py-0.5 text-[11.5px] font-medium text-warn-ink">
-                    <Star class="size-3" />默认
-                  </span>
-                {/if}
-                {#if !m.enabled}<span class="rounded-full bg-surface-3 px-2 py-0.5 text-[11.5px] text-muted">已停用</span>{/if}
-              </div>
-              {#if m.description}<p class="mt-0.5 text-[12.5px] text-muted">{m.description}</p>{/if}
-            </div>
-          </div>
-
-          <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[12.5px]">
+        <EntityCard icon={Bot} name={m.name} description={m.description} enabled={m.enabled} isDefault={m.is_default}>
+          {#snippet details()}
             <dt class="text-muted">接口地址</dt>
             <dd class="truncate font-mono text-[12px]" title={m.base_url}>{m.base_url || 'https://api.openai.com/v1'}</dd>
             <dt class="text-muted">模型</dt>
@@ -229,22 +222,13 @@
             <dd class="font-mono text-[12px]">{m.api_key_set ? m.api_key_masked : '未设置'}</dd>
             <dt class="text-muted">并发</dt>
             <dd>每秒 {m.qps} 个请求{m.pool_max_workers ? ` · ${m.pool_max_workers} 线程` : ''}</dd>
-          </dl>
-
-          {#if result && result !== 'running'}
-            <div class="mt-3 flex gap-2 rounded-xl px-3 py-2 text-[12.5px] {result.ok ? 'bg-good-soft text-good-ink' : 'bg-bad-soft text-bad-ink'}">
-              {#if result.ok}<CircleCheck class="mt-0.5 size-4 shrink-0" />{:else}<CircleX class="mt-0.5 size-4 shrink-0" />{/if}
-              <p class="min-w-0 break-words">
-                {#if result.ok}
-                  连接正常 · {((result.latency_ms ?? 0) / 1000).toFixed(1)} 秒 · 回复：{result.reply || '（空）'}
-                {:else}
-                  {result.status ? `HTTP ${result.status} · ` : ''}{result.error}
-                {/if}
-              </p>
-            </div>
-          {/if}
-
-          <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+          {/snippet}
+          {#snippet notes()}
+            {#if result && result !== 'running'}
+              <ResultNote ok={result.ok} text={testText(result)} />
+            {/if}
+          {/snippet}
+          {#snippet actions()}
             <button class="btn btn-secondary btn-sm" disabled={result === 'running'} onclick={() => test(m)}>
               {#if result === 'running'}<LoaderCircle class="size-3.5 animate-spin" />{:else}<RefreshCw class="size-3.5" />{/if}
               测试连接
@@ -257,17 +241,17 @@
             <button class="btn btn-ghost btn-sm btn-icon ml-auto text-bad-ink" title="删除" aria-label="删除" onclick={() => remove(m)}>
               <Trash2 class="size-4" />
             </button>
-          </div>
-        </div>
+          {/snippet}
+        </EntityCard>
       {/each}
     </div>
   {:else if !loading}
-    <div class="card flex flex-col items-center px-6 py-14 text-center">
-      <div class="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent"><Bot class="size-6" /></div>
-      <p class="mt-4 font-medium">还没有配置翻译模型</p>
-      <p class="mt-1 max-w-sm text-[13px] text-muted">添加一个 OpenAI 兼容的接口（比如中转站的地址和 Key），用户就能开始翻译了。</p>
-      <button class="btn btn-primary mt-5" onclick={openCreate}><Plus class="size-4" />添加模型</button>
-    </div>
+    <EmptyState
+      icon={Bot}
+      title="还没有配置翻译模型"
+      text="添加一个 OpenAI 兼容的接口（比如中转站的地址和 Key），用户就能开始翻译了。"
+      action={{ label: '添加模型', onclick: openCreate }}
+    />
   {/if}
 </div>
 

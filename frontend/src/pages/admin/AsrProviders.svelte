@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import EmptyState from '../../components/admin/EmptyState.svelte';
+  import EntityCard from '../../components/admin/EntityCard.svelte';
+  import ResultNote from '../../components/admin/ResultNote.svelte';
   import Modal from '../../components/Modal.svelte';
   import Switch from '../../components/Switch.svelte';
   import { api, ApiError } from '../../lib/api';
@@ -368,24 +371,8 @@
         {@const result = checks[p.id]}
         {@const test = tests[p.id]}
         {@const kind = kindMap.get(p.kind)}
-        <div class="card flex flex-col p-5 {p.enabled ? '' : 'opacity-65'}">
-          <div class="flex items-start gap-3">
-            <div class="grid size-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent"><AudioWaveform class="size-5" /></div>
-            <div class="min-w-0 flex-1">
-              <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <h3 class="truncate text-[15px] font-semibold">{p.name}</h3>
-                {#if p.is_default}
-                  <span class="inline-flex items-center gap-1 rounded-full bg-warn-soft px-2 py-0.5 text-[11.5px] font-medium text-warn-ink">
-                    <Star class="size-3" />默认
-                  </span>
-                {/if}
-                {#if !p.enabled}<span class="rounded-full bg-surface-3 px-2 py-0.5 text-[11.5px] text-muted">已停用</span>{/if}
-              </div>
-              {#if p.description}<p class="mt-0.5 text-[12.5px] text-muted">{p.description}</p>{/if}
-            </div>
-          </div>
-
-          <dl class="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[12.5px]">
+        <EntityCard icon={AudioWaveform} name={p.name} description={p.description} enabled={p.enabled} isDefault={p.is_default}>
+          {#snippet details()}
             <dt class="text-muted">类型</dt>
             <dd class="truncate">{p.kind_label}</dd>
             {#each fieldsOf(p) as f (f.key)}
@@ -403,70 +390,67 @@
               <dt class="text-muted">单次上限</dt>
               <dd>{spoken(kind.max_part_seconds * 1000)}{kind.hotwords ? ' · 支持热词' : ''}</dd>
             {/if}
-          </dl>
+          {/snippet}
+          {#snippet notes()}
+            {#if result && result !== 'running'}
+              <ResultNote ok={result.ok} text={(result.ok ? '密钥有效' : '密钥检查未通过') + (result.message ? ` · ${result.message}` : '')} />
+            {/if}
 
-          {#if result && result !== 'running'}
-            <div class="mt-3 flex gap-2 rounded-xl px-3 py-2 text-[12.5px] {result.ok ? 'bg-good-soft text-good-ink' : 'bg-bad-soft text-bad-ink'}">
-              {#if result.ok}<CircleCheck class="mt-0.5 size-4 shrink-0" />{:else}<CircleX class="mt-0.5 size-4 shrink-0" />{/if}
-              <p class="min-w-0 break-words">{result.ok ? '密钥有效' : '密钥检查未通过'}{result.message ? ` · ${result.message}` : ''}</p>
-            </div>
-          {/if}
-
-          {#if test}
-            <div class="mt-3 rounded-xl bg-surface-2 px-3 py-2.5 text-[12.5px]" aria-live="polite">
-              <div class="flex items-center gap-1.5 font-medium">
-                {#if test.running}
-                  <LoaderCircle class="size-4 shrink-0 animate-spin text-accent" />完整测试进行中…
-                {:else if test.ok}
-                  <CircleCheck class="size-4 shrink-0 text-good-ink" /><span class="text-good-ink">完整测试通过，服务商能拉取本站的录音</span>
-                {:else if test.lost}
-                  <CircleX class="size-4 shrink-0 text-bad-ink" /><span class="text-bad-ink">没有收到测试结果，可能是实时连接中断了，请重试</span>
-                {:else}
-                  <CircleX class="size-4 shrink-0 text-bad-ink" /><span class="text-bad-ink">完整测试未通过</span>
+            {#if test}
+              <div class="mt-3 rounded-xl bg-surface-2 px-3 py-2.5 text-[12.5px]" aria-live="polite">
+                <div class="flex items-center gap-1.5 font-medium">
+                  {#if test.running}
+                    <LoaderCircle class="size-4 shrink-0 animate-spin text-accent" />完整测试进行中…
+                  {:else if test.ok}
+                    <CircleCheck class="size-4 shrink-0 text-good-ink" /><span class="text-good-ink">完整测试通过，服务商能拉取本站的录音</span>
+                  {:else if test.lost}
+                    <CircleX class="size-4 shrink-0 text-bad-ink" /><span class="text-bad-ink">没有收到测试结果，可能是实时连接中断了，请重试</span>
+                  {:else}
+                    <CircleX class="size-4 shrink-0 text-bad-ink" /><span class="text-bad-ink">完整测试未通过</span>
+                  {/if}
+                  {#if !test.running}
+                    <button
+                      class="btn btn-ghost btn-sm btn-icon -my-1 -mr-1.5 ml-auto"
+                      title="收起"
+                      aria-label="收起测试结果"
+                      onclick={() => delete tests[p.id]}
+                    >
+                      <X class="size-3.5" />
+                    </button>
+                  {/if}
+                </div>
+                {#if test.steps.length || test.running}
+                  <ol class="mt-2 space-y-1.5 border-t border-line pt-2">
+                    {#each test.steps as s, i (i)}
+                      <li class="flex gap-2">
+                        {#if s.ok}
+                          <CircleCheck class="mt-0.5 size-4 shrink-0 text-good-ink" />
+                        {:else}
+                          <CircleX class="mt-0.5 size-4 shrink-0 text-bad-ink" />
+                        {/if}
+                        <div class="min-w-0">
+                          <p class="text-ink">{s.name}</p>
+                          {#if s.message}<p class="break-words text-muted">{s.message}</p>{/if}
+                        </div>
+                      </li>
+                    {/each}
+                    {#if test.running}
+                      <li class="flex gap-2 text-muted">
+                        <LoaderCircle class="mt-0.5 size-4 shrink-0 animate-spin" />
+                        <p>{test.steps.length ? '下一步进行中…' : '正在检查密钥…'}</p>
+                      </li>
+                    {/if}
+                  </ol>
                 {/if}
-                {#if !test.running}
-                  <button
-                    class="btn btn-ghost btn-sm btn-icon -my-1 -mr-1.5 ml-auto"
-                    title="收起"
-                    aria-label="收起测试结果"
-                    onclick={() => delete tests[p.id]}
-                  >
-                    <X class="size-3.5" />
-                  </button>
+                {#if test.running}
+                  <p class="mt-2 text-[12px] text-muted">
+                    服务商排队时可能要等一两分钟，最多等 4 分钟。{events.connected ? '' : '实时连接已断开，结果可能收不到。'}
+                  </p>
                 {/if}
               </div>
-              {#if test.steps.length || test.running}
-                <ol class="mt-2 space-y-1.5 border-t border-line pt-2">
-                  {#each test.steps as s, i (i)}
-                    <li class="flex gap-2">
-                      {#if s.ok}
-                        <CircleCheck class="mt-0.5 size-4 shrink-0 text-good-ink" />
-                      {:else}
-                        <CircleX class="mt-0.5 size-4 shrink-0 text-bad-ink" />
-                      {/if}
-                      <div class="min-w-0">
-                        <p class="text-ink">{s.name}</p>
-                        {#if s.message}<p class="break-words text-muted">{s.message}</p>{/if}
-                      </div>
-                    </li>
-                  {/each}
-                  {#if test.running}
-                    <li class="flex gap-2 text-muted">
-                      <LoaderCircle class="mt-0.5 size-4 shrink-0 animate-spin" />
-                      <p>{test.steps.length ? '下一步进行中…' : '正在检查密钥…'}</p>
-                    </li>
-                  {/if}
-                </ol>
-              {/if}
-              {#if test.running}
-                <p class="mt-2 text-[12px] text-muted">
-                  服务商排队时可能要等一两分钟，最多等 4 分钟。{events.connected ? '' : '实时连接已断开，结果可能收不到。'}
-                </p>
-              {/if}
-            </div>
-          {/if}
-
-          <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+            {/if}
+          {/snippet}
+          {#snippet actions()}
             <button class="btn btn-secondary btn-sm" disabled={result === 'running'} onclick={() => check(p)} title="只检查密钥，几秒出结果，不产生费用">
               {#if result === 'running'}<LoaderCircle class="size-3.5 animate-spin" />{:else}<KeyRound class="size-3.5" />{/if}
               检查密钥
@@ -488,19 +472,17 @@
             <button class="btn btn-ghost btn-sm btn-icon ml-auto text-bad-ink" title="删除" aria-label="删除" onclick={() => remove(p)}>
               <Trash2 class="size-4" />
             </button>
-          </div>
-        </div>
+          {/snippet}
+        </EntityCard>
       {/each}
     </div>
   {:else}
-    <div class="card flex flex-col items-center px-6 py-14 text-center">
-      <div class="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent"><AudioWaveform class="size-6" /></div>
-      <p class="mt-4 font-medium">还没有配置语音识别服务</p>
-      <p class="mt-1 max-w-sm text-[13px] text-muted">
-        添加阿里云或腾讯云的录音文件识别服务并填好密钥，用户就能上传会议录音、生成逐字稿和纪要了。
-      </p>
-      <button class="btn btn-primary mt-5" onclick={openCreate}><Plus class="size-4" />添加识别服务</button>
-    </div>
+    <EmptyState
+      icon={AudioWaveform}
+      title="还没有配置语音识别服务"
+      text="添加阿里云或腾讯云的录音文件识别服务并填好密钥，用户就能上传会议录音、生成逐字稿和纪要了。"
+      action={{ label: '添加识别服务', onclick: openCreate }}
+    />
   {/if}
 </div>
 

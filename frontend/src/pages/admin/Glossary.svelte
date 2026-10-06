@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import EmptyState from '../../components/admin/EmptyState.svelte';
   import Modal from '../../components/Modal.svelte';
   import { confirm } from '../../lib/confirm.svelte';
   import { dateTime, isImeEnter } from '../../lib/format';
@@ -219,14 +220,12 @@
       </table>
     </div>
   {:else}
-    <div class="card flex flex-col items-center px-6 py-14 text-center">
-      <div class="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent"><BookA class="size-6" /></div>
-      <p class="mt-4 font-medium">术语表还是空的</p>
-      <p class="mt-1 max-w-sm text-[13px] text-muted">
-        把课题组常说的专有名词、人名、缩写加进来（比如模型名、项目代号），并写上识别常听错的写法，整理出的逐字稿和纪要会更准确。
-      </p>
-      <button class="btn btn-primary mt-5" onclick={openCreate}><Plus class="size-4" />添加术语</button>
-    </div>
+    <EmptyState
+      icon={BookA}
+      title="术语表还是空的"
+      text="把课题组常说的专有名词、人名、缩写加进来（比如模型名、项目代号），并写上识别常听错的写法，整理出的逐字稿和纪要会更准确。"
+      action={{ label: '添加术语', onclick: openCreate }}
+    />
   {/if}
 </div>
 

@@ -1,10 +1,11 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import ResultNote from '../../components/admin/ResultNote.svelte';
   import Modal from '../../components/Modal.svelte';
   import Switch from '../../components/Switch.svelte';
   import { confirm } from '../../lib/confirm.svelte';
   import { errorText } from '../../lib/format';
-  import { ChevronDown, CircleCheck, CircleX, Copy, FlaskConical, LoaderCircle, Plus, Trash2, TriangleAlert } from '../../lib/icons';
+  import { ChevronDown, Copy, FlaskConical, LoaderCircle, Plus, Trash2, TriangleAlert } from '../../lib/icons';
   import { meetingApi } from '../../lib/meeting/api';
   import { STEP_LABELS } from '../../lib/meeting/format';
   import {
@@ -461,15 +462,11 @@
         {/if}
 
         {#if result && result !== 'running'}
-          <div class="mt-3 rounded-xl px-3 py-2 text-[12.5px] {result.ok ? 'bg-good-soft text-good-ink' : 'bg-bad-soft text-bad-ink'}">
-            <div class="flex gap-2">
-              {#if result.ok}<CircleCheck class="mt-0.5 size-4 shrink-0" />{:else}<CircleX class="mt-0.5 size-4 shrink-0" />{/if}
-              <p class="min-w-0 break-words">{testSummary(result)}</p>
-            </div>
+          <ResultNote ok={result.ok} text={testSummary(result)}>
             {#if Object.keys(result.sent).length}
               <pre class="mt-2 max-h-40 overflow-auto rounded-lg bg-surface/70 px-2.5 py-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-ink-2">{JSON.stringify(result.sent, null, 2)}</pre>
             {/if}
-          </div>
+          </ResultNote>
         {:else if result === 'running'}
           <p class="mt-3 flex items-center gap-1.5 text-[12.5px] text-muted">
             <LoaderCircle class="size-3.5 animate-spin" />正在测试，会思考的模型可能要等一两分钟…
