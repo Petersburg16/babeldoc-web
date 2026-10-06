@@ -8,7 +8,7 @@ from typing import Any
 
 
 class EventBus:
-    """按用户分发的进程内事件总线，供 SSE 推送任务进度。publish 可在任意线程调用。"""
+    """按用户分发的进程内事件总线，供 SSE 推送翻译任务与会议记录的事件。publish 可在任意线程调用。"""
 
     def __init__(self, queue_size: int = 200):
         self._subs: dict[int, set[asyncio.Queue]] = defaultdict(set)

@@ -1,13 +1,20 @@
 """BabelDOC 适配层：后端以子进程方式调用，项目里只有这个文件直接依赖 babeldoc。
 
 协议 v1
-  argv[1]  任务描述 JSON（见 backend/app/engine.py 的 build_spec），不含密钥
+  argv[1]  任务描述 JSON（见 backend/app/engine.py 的 build_spec），不含密钥。各键：
+           input / output_dir / working_dir / lang_in / lang_out：文件位置与语言
+           skip_translation：跳过翻译走完整流水线（engine-check 冒烟用）
+           model：{base_url, model, qps, pool_max_workers, send_temperature, json_mode, term_model}
            model.term 可选：术语提取单独用的模型配置（字段同 model），没有时用 model.term_model 或翻译模型
+           options：页码、输出、水印、术语表等开关，键名见 build_spec 与下面的 run()
+           job_id：只为落盘的 spec.json 便于排查，runner 不读；mock：只给 mock_runner.py 用
+           ignore_cache / preflight：后端目前不写，缺省分别是 false（用翻译缓存）、true（开工前先打一次接口）
   env      BDW_API_KEY / BDW_TERM_API_KEY 传模型密钥；model.term 只用 BDW_TERM_API_KEY，绝不回退到主密钥
   输出     每行一个 JSON 事件，写到启动时复制出来的原 stdout；
            babeldoc 及其 fork 出的子进程的一切输出都被重定向到 stderr（后端落盘为 engine.log）
+           started 里的 protocol 即 PROTOCOL_VERSION；后端目前只读 version，不校验 protocol
 
-  {"event": "started", "engine": "babeldoc", "version": "0.6.4", "pid": 123}
+  {"event": "started", "engine": "babeldoc", "version": "0.6.4", "pid": 123, "protocol": 1}
   {"event": "progress", "overall": 12.5, "stage": "Parse Page Layout", "current": 3, "total": 15, "part": 1, "parts": 1}
   {"event": "finished", "files": {"mono": "...", "dual": "...", "glossary": null}, "stats": {...}, "warning": null}
   {"event": "failed", "kind": "preflight|input|translate|internal", "message": "..."}

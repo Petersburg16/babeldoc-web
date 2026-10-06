@@ -59,7 +59,7 @@ def new_job_id() -> str:
 
 
 class SecretBox:
-    """用 data/secret.key 加密存放模型 API Key，数据库备份外流时不直接泄露密钥。"""
+    """用 data/secret.key 加密存放模型与识别服务的密钥，数据库备份外流时不直接泄露密钥。"""
 
     def __init__(self, key_path: Path):
         key_path.parent.mkdir(parents=True, exist_ok=True)
