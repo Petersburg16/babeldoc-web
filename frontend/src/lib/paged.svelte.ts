@@ -5,7 +5,7 @@
 
 const PAGE = 20;
 
-export interface Page<T> {
+interface Page<T> {
   items: T[];
   total: number;
 }
