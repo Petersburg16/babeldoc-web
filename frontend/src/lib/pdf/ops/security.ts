@@ -15,8 +15,6 @@ export interface Permissions {
   annotate: boolean;
 }
 
-export const ALL_ALLOWED: Permissions = { print: 'full', copy: true, modify: true, annotate: true };
-
 /** PDF 里逐项的权限位（qpdf 的说法），true 为允许 */
 interface Flags {
   printHigh: boolean;

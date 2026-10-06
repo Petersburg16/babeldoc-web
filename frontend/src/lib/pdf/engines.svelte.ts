@@ -159,16 +159,6 @@ class Engines {
     for (const id of wanted) this.ready = { ...this.ready, [id]: true };
     if (cache) void prune(cache);
   }
-
-  /** 清掉本机缓存的所有引擎 */
-  async clear() {
-    try {
-      await caches.delete(CACHE_NAME);
-    } catch {
-      /* 忽略 */
-    }
-    await this.refresh();
-  }
 }
 
 const inflight = new Map<string, Promise<void>>();
@@ -243,14 +233,4 @@ export async function assetBytes(id: EngineId, path: string) {
 /** 给只接受网址的库（例如 LibreOffice）用：从缓存生成 blob URL，不依赖 service worker 是否接管 */
 export async function assetBlobUrl(id: EngineId, path: string) {
   return URL.createObjectURL(await (await fetchAsset(id, path)).blob());
-}
-
-/** 本站在本机占用的存储空间 */
-export async function storageUsage() {
-  try {
-    const est = await navigator.storage?.estimate?.();
-    return { usage: est?.usage ?? 0, quota: est?.quota ?? 0 };
-  } catch {
-    return { usage: 0, quota: 0 };
-  }
 }

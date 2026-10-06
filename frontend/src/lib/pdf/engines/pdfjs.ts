@@ -1,4 +1,4 @@
-// PDF.js：缩略图、页面转图片、页数与密码探测。只有用到的工具会 import 这个模块。
+// PDF.js：缩略图、页面转图片（页数和密码由 qpdf 处理）。只有用到的工具会 import 这个模块。
 // 用 legacy 构建：常规构建依赖 Math.sumPrecise 等很新的 API（Chrome 145+），国内浏览器套壳跟不上；
 // legacy 5.7 支持 Chrome 118+。CMap、标准字体、wasm 解码器都由本站提供，缺了 CMap 知网等中文 PDF 会丢字。
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -17,20 +17,13 @@ function sharedWorker() {
   return worker;
 }
 
-export class PasswordNeeded extends Error {
-  constructor(public incorrect: boolean) {
-    super(incorrect ? '密码不正确' : '这个 PDF 需要打开密码');
-  }
-}
-
-/** 打开 PDF；需要密码时抛出 PasswordNeeded。用完调用 closePdf。 */
-export async function openPdf(bytes: Uint8Array, password?: string): Promise<PdfDoc> {
+/** 打开 PDF，bytes 须未加密（先用 unlockPdf 解开）。用完调用 closePdf。 */
+export async function openPdf(bytes: Uint8Array): Promise<PdfDoc> {
   // 四个数据地址都要是绝对网址且以 / 结尾，PDF.js 才会在 worker 里自己取数据（ICC 色彩管理也只在这种模式下启用）
   const base = new URL(assetBase('render'), location.origin).href;
   const task = pdfjs.getDocument({
     worker: sharedWorker(),
     data: bytes.slice(), // 会被转移给 worker，复制一份免得调用方的数据失效
-    password,
     cMapUrl: base + 'cmaps/',
     cMapPacked: true,
     standardFontDataUrl: base + 'standard_fonts/',
@@ -42,26 +35,13 @@ export async function openPdf(bytes: Uint8Array, password?: string): Promise<Pdf
     return await task.promise;
   } catch (e) {
     await task.destroy();
-    const err = e as { name?: string; code?: number };
-    if (err?.name === 'PasswordException') {
-      throw new PasswordNeeded(err.code === pdfjs.PasswordResponses.INCORRECT_PASSWORD);
-    }
+    if ((e as { name?: string })?.name === 'PasswordException') throw new Error('这个 PDF 需要打开密码');
     throw new Error(`无法读取这个 PDF：${e instanceof Error ? e.message : String(e)}`);
   }
 }
 
 export async function closePdf(doc: PdfDoc | null | undefined) {
   if (doc) await doc.loadingTask.destroy();
-}
-
-/** 页数；需要密码时抛出 PasswordNeeded */
-export async function pageCount(bytes: Uint8Array, password?: string) {
-  const doc = await openPdf(bytes, password);
-  try {
-    return doc.numPages;
-  } finally {
-    await closePdf(doc);
-  }
 }
 
 // 画布像素上限，参照 PDF.js 自带阅读器：桌面 2^25，手机端更小

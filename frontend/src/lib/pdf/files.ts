@@ -10,10 +10,6 @@ export type Report = (fraction: number | null, text?: string) => void;
 
 export const PDF_TYPE = 'application/pdf';
 
-export function isPdf(file: File) {
-  return file.type === PDF_TYPE || file.name.toLowerCase().endsWith('.pdf');
-}
-
 export function stem(name: string) {
   const dot = name.lastIndexOf('.');
   return dot > 0 ? name.slice(0, dot) : name;

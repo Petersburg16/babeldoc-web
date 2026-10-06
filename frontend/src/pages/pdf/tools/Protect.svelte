@@ -3,9 +3,16 @@
   import Switch from '../../../components/Switch.svelte';
   import { copyText } from '../../../lib/format';
   import { Copy, Eye } from '../../../lib/icons';
+  import { QpdfError } from '../../../lib/pdf/engines/qpdf';
   import { pdfBlob, renamed, type Report } from '../../../lib/pdf/files';
   import { EyeOff } from '../../../lib/pdf/icons';
-  import type { PrintLevel } from '../../../lib/pdf/ops/security';
+  import {
+    encryptPdf,
+    isRestricted,
+    limitLabels,
+    passwordTooLong,
+    type PrintLevel,
+  } from '../../../lib/pdf/ops/security';
   import { toast } from '../../../lib/toast.svelte';
   import FilePicker from '../ui/FilePicker.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
@@ -22,25 +29,19 @@
   let annotate = $state(true);
   let done = $state<{ owner: string; generated: boolean; limits: string[]; locked: boolean; replaced: boolean } | null>(null);
 
-  const restricted = $derived(print !== 'full' || !copy || !modify || !annotate);
-  // AES-256 的密码按 UTF-8 最多 127 字节
-  const tooLong = (s: string) => new TextEncoder().encode(s).length > 127;
+  const restricted = $derived(isRestricted({ print, copy, modify, annotate }));
   const mismatch = $derived(!!confirmPassword && confirmPassword !== userPassword);
   const problem = $derived.by(() => {
     if (!files.length) return '请先选择一个 PDF';
     if (!userPassword && !restricted) return '请设置打开密码，或至少限制一项权限';
-    if (tooLong(userPassword) || (restricted && tooLong(ownerPassword))) return '密码太长，最多 127 字节（约 42 个汉字）';
+    if (passwordTooLong(userPassword) || (restricted && passwordTooLong(ownerPassword))) return '密码太长，最多 127 字节（约 42 个汉字）';
     if (userPassword && confirmPassword !== userPassword) return mismatch ? '两次输入的打开密码不一致' : '请再输入一次打开密码';
     if (restricted && ownerPassword && ownerPassword === userPassword) return '权限密码要与打开密码不同，否则限制不起作用';
     return '';
   });
 
   async function run(report: Report) {
-    const [{ unlockPdf }, { encryptPdf, limitLabels }, { QpdfError }] = await Promise.all([
-      import('../../../lib/pdf/input'),
-      import('../../../lib/pdf/ops/security'),
-      import('../../../lib/pdf/engines/qpdf'),
-    ]);
+    const { unlockPdf } = await import('../../../lib/pdf/input');
     done = null;
     const file = files[0];
     const permissions = { print, copy, modify, annotate };
