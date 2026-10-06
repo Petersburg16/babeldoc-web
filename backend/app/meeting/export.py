@@ -20,6 +20,7 @@ from docx.shared import Cm, RGBColor
 from docx.text.paragraph import Paragraph as DocxParagraph
 
 from ..services import LOCAL_TZ
+from .format import resolve_speaker, speaker_sort_key, spoken
 
 ExportFormat = Literal["docx", "md", "txt", "srt"]
 ExportContent = Literal["minutes", "transcript", "both"]
@@ -35,7 +36,6 @@ BOM = "﻿"
 CJK_FONT = "微软雅黑"
 LATIN_FONT = "Calibri"
 GRAY = RGBColor(0x80, 0x80, 0x80)
-MAX_MERGE_HOPS = 20
 
 SPEAKER_PLACEHOLDER = re.compile(r"\[\[(S\d+)\]\]")
 TIMESTAMP = re.compile(r"\[\d{1,2}:\d{2}(?::\d{2})?\]")
@@ -76,17 +76,6 @@ class NothingToExport(Exception):
 # ---------- 说话人 ----------
 
 
-def resolve_speaker(speakers: dict[str, Any], sid: str) -> str:
-    current = sid
-    for _ in range(MAX_MERGE_HOPS):
-        info = speakers.get(current)
-        target = info.get("merged_into") if isinstance(info, dict) else None
-        if not target or target == current:
-            break
-        current = target
-    return current
-
-
 def speaker_name(speakers: dict[str, Any], sid: str) -> str:
     final = resolve_speaker(speakers, sid)
     info = speakers.get(final)
@@ -98,14 +87,9 @@ def fill_speakers(text: str, speakers: dict[str, Any]) -> str:
     return SPEAKER_PLACEHOLDER.sub(lambda m: speaker_name(speakers, m.group(1)), text)
 
 
-def _speaker_order(key: str) -> tuple[int, str]:
-    digits = key.removeprefix("S")
-    return (int(digits), key) if digits.isdigit() else (1 << 30, key)
-
-
 def participants(data: ExportData) -> list[str]:
     """参会人：按首次发言顺序；没有逐字稿时按编号列出未被合并的说话人。"""
-    ids = [s.speaker for s in data.segments] or sorted(data.speakers, key=_speaker_order)
+    ids = [s.speaker for s in data.segments] or sorted(data.speakers, key=speaker_sort_key)
     seen: dict[str, None] = {}
     for sid in ids:
         seen.setdefault(resolve_speaker(data.speakers, sid), None)
@@ -123,16 +107,6 @@ def clock(ms: int) -> str:
 def srt_clock(ms: int) -> str:
     ms = max(0, ms)
     return f"{clock(ms)},{ms % 1000:03d}"
-
-
-def spoken_duration(ms: int) -> str:
-    total = round(ms / 1000)
-    if total < 60:
-        return f"{total} 秒"
-    hours, minutes = divmod(round(total / 60), 60)
-    if not hours:
-        return f"{minutes} 分钟"
-    return f"{hours} 小时 {minutes} 分" if minutes else f"{hours} 小时"
 
 
 def local_date(value: datetime | None) -> str:
@@ -185,7 +159,7 @@ def turns(data: ExportData) -> list[Turn]:
 def header_lines(data: ExportData) -> list[tuple[str, str]]:
     rows = [
         ("日期", local_date(data.created_at)),
-        ("时长", spoken_duration(data.duration_ms) if data.duration_ms > 0 else ""),
+        ("时长", spoken(data.duration_ms) if data.duration_ms > 0 else ""),
         ("参会人", "、".join(participants(data))),
         ("识别服务", data.provider_name.strip()),
     ]

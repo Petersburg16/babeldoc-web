@@ -15,6 +15,8 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from .format import clock, is_long, neutralize, resolve_speaker, speaker_sort_key
+
 HISTORY_ROUNDS = 10
 WINDOW_BEFORE = 3  # 命中句前后各带几句，免得断章取义
 WINDOW_AFTER = 3
@@ -23,7 +25,8 @@ MINUTES_SHARE = 1 / 3  # 只附片段时，纪要最多占总预算的比例
 PREVIOUS_QUESTION_WEIGHT = 0.5  # 追问（“他后来怎么说”）常常没有关键词，借上一个问题的词，权重减半
 SPEAKER_BOOST = 1.0  # 问题里点了某人的名字时，给这个人说的句子加的分
 GAP = "……"
-LONG_MS = 3600 * 1000
+# 对话提示词里包裹资料用的标签，资料里出现时要中和掉
+_TAGS = ("transcript", "minutes")
 
 SYSTEM_RULES = "\n".join(
     (
@@ -59,7 +62,6 @@ _STOP = (
 )
 STOPWORDS = frozenset(_STOP[i : i + 2] for i in range(0, len(_STOP), 2))
 _TOKEN = re.compile(r"[a-z0-9][a-z0-9_.+\-]*|[\u3400-\u9fff]+")
-_UNSAFE_TAG = re.compile(r"<(?=\s*/?\s*(?:transcript|minutes)\b)", re.IGNORECASE)
 _SPACE = re.compile(r"\s+")
 
 
@@ -77,40 +79,9 @@ class ChatContext:
     chars: int
 
 
-def stamp(ms: int, long: bool = False) -> str:
-    """会议内的绝对时间。与前端 clock()、纪要一致：mm:ss，一小时以上的会议整场都用 h:mm:ss（小时不补零），
-    同一场会议只有一种写法，模型照抄时不会混。"""
-    total = max(0, ms) // 1000
-    h, rest = divmod(total, 3600)
-    m, s = divmod(rest, 60)
-    return f"{h}:{m:02d}:{s:02d}" if long or h else f"{m:02d}:{s:02d}"
-
-
-def is_long(duration_ms: int, lines: Sequence[Line]) -> bool:
-    last = max((line.start_ms for line in lines), default=0)
-    return max(duration_ms, last) > LONG_MS
-
-
-def resolve_speaker(speakers: dict[str, Any], speaker: str) -> str:
-    """沿着合并关系找到最终的说话人编号（与前端 format.ts 的 resolveSpeaker 一致）。"""
-    current = speaker
-    for _ in range(20):
-        info = speakers.get(current)
-        target = info.get("merged_into") if isinstance(info, dict) else None
-        if not target or target == current:
-            break
-        current = str(target)
-    return current
-
-
 def _safe(text: str) -> str:
     """资料里出现 </transcript> 之类的字样时换掉尖括号，免得提前“结束”资料块。"""
-    return _UNSAFE_TAG.sub("‹", text)
-
-
-def _speaker_key(speaker: str) -> tuple[int, str]:
-    digits = speaker[1:]
-    return (int(digits) if digits.isdigit() else 1_000_000, speaker)
+    return neutralize(text, _TAGS)
 
 
 def _names(speakers: dict[str, Any], speaker: str) -> tuple[str, str]:
@@ -128,12 +99,12 @@ def render_lines(lines: Sequence[Line], speakers: dict[str, Any], long: bool) ->
     out = []
     for line in lines:
         text = _safe(_SPACE.sub(" ", line.text).strip())
-        out.append(f"[{stamp(line.start_ms, long)}] [[{resolve_speaker(speakers, line.speaker)}]]：{text}")
+        out.append(f"[{clock(line.start_ms, long)}] [[{resolve_speaker(speakers, line.speaker)}]]：{text}")
     return out
 
 
 def _speaker_list(lines: Sequence[Line], speakers: dict[str, Any]) -> str:
-    present = sorted({resolve_speaker(speakers, line.speaker) for line in lines}, key=_speaker_key)
+    present = sorted({resolve_speaker(speakers, line.speaker) for line in lines}, key=speaker_sort_key)
     rows = []
     for speaker in present:
         name, guessed = _names(speakers, speaker)
@@ -148,7 +119,7 @@ def _speaker_list(lines: Sequence[Line], speakers: dict[str, Any]) -> str:
 
 
 def _header(title: str, duration_ms: int, count: int, long: bool) -> str:
-    return f"会议：{_safe(title)}；时长 {stamp(duration_ms, long)}；逐字稿共 {count} 句。"
+    return f"会议：{_safe(title)}；时长 {clock(duration_ms, long)}；逐字稿共 {count} 句。"
 
 
 def _minutes_block(minutes_md: str | None, stale: bool, cap: int | None = None) -> str:
@@ -300,7 +271,8 @@ def build_context(
 ) -> ChatContext:
     """history 是这个问题之前的对话 [(role, content)]，按时间先后排好。"""
     speakers = speakers or {}
-    long = is_long(duration_ms, lines)
+    # 逐字稿每句只写开始时间：会议时长没记准时按最后一句的开始时间算
+    long = is_long(max(duration_ms, max((line.start_ms for line in lines), default=0)))
     rendered = render_lines(lines, speakers, long)
     pairs = _pairs(history)
     header = _header(title, duration_ms, len(lines), long)

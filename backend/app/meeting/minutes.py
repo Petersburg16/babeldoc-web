@@ -24,6 +24,7 @@ from ..db import utcnow
 from ..llm import ChatResult, LlmError
 from ..models import Meeting, MeetingSegment
 from ..settings_store import load_settings
+from .format import clock, is_long, neutralize, resolve_speaker, speaker_sort_key, spoken
 from .llmcall import add_tokens
 from .templates import MinutesTemplate, get_template
 
@@ -39,9 +40,9 @@ TAIL_MIN_MS = 5 * 60_000  # 不足 5 分钟的尾巴并进上一段
 CHUNK_FILL = 0.8  # 每段逐字稿最多占上下文预算的比例，留出提示词的位置
 NOTES_PARALLEL = 3
 NOTES_PREFIX = "minutes-notes-"
-LONG_MS = 3600 * 1000
+# 纪要提示词里包裹数据用的标签，正文里出现时要中和掉
+_TAGS = ("transcript", "notes", "template")
 
-_TAG = re.compile(r"<\s*/?\s*(?:transcript|notes|template)\s*>", re.I)
 _FENCE = re.compile(r"^```[ \t]*(?:markdown|md)?[ \t]*\n(.*?)\n?```$", re.S | re.I)
 _INNER_FENCE = re.compile(r"```[ \t]*(?:markdown|md)[ \t]*\n(.*?)\n?```", re.S | re.I)
 _TS = r"\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]"
@@ -103,7 +104,7 @@ SYSTEM_NOTES = "\n".join(
 )
 
 
-# ---------- 逐字稿格式化（对话、导出也可复用） ----------
+# ---------- 逐字稿格式化 ----------
 
 
 @dataclass(frozen=True)
@@ -115,48 +116,6 @@ class Line:
     text: str  # 已格式化好的一行：“[mm:ss] [[S3]] 内容”
 
 
-def clock(ms: int, long: bool = False) -> str:
-    """毫秒 → mm:ss；long 为真或超过 1 小时时用 h:mm:ss（小时不补零），与前端 clock() 一致。"""
-    total = max(0, int(ms) // 1000)
-    h, rest = divmod(total, 3600)
-    m, s = divmod(rest, 60)
-    return f"{h}:{m:02d}:{s:02d}" if long or h else f"{m:02d}:{s:02d}"
-
-
-def spoken(ms: int) -> str:
-    """时长的口语说法，与前端 spoken() 一致。"""
-    total = round(ms / 1000)
-    if total < 60:
-        return f"{total} 秒"
-    h, rest = divmod(total, 3600)
-    m = round(rest / 60)
-    if not h:
-        return f"{m} 分钟"
-    return f"{h} 小时 {m} 分" if m else f"{h} 小时"
-
-
-def resolve_speaker(speakers: dict[str, Any], speaker: str) -> str:
-    """沿 merged_into 找到最终的说话人编号（防环）。"""
-    current = speaker
-    for _ in range(20):
-        info = speakers.get(current)
-        target = info.get("merged_into") if isinstance(info, dict) else None
-        if not target or target == current:
-            break
-        current = str(target)
-    return current
-
-
-def _speaker_order(sid: str) -> tuple[int, str]:
-    digits = sid[1:] if sid[:1] == "S" else ""
-    return (int(digits), sid) if digits.isdigit() else (1_000_000, sid)
-
-
-def _neutralize(text: str) -> str:
-    # 正文里出现的 </transcript> 之类会让模型以为数据提前结束，换成全角括号
-    return _TAG.sub(lambda m: m.group(0).replace("<", "＜").replace(">", "＞"), text)
-
-
 def transcript_lines(segments: Iterable[Any], speakers: dict[str, Any], *, long: bool) -> list[Line]:
     """segments 需要有 idx、start_ms、end_ms、speaker、text、raw_text、edited 属性（ORM 行或查询结果行都行）。
 
@@ -165,7 +124,7 @@ def transcript_lines(segments: Iterable[Any], speakers: dict[str, Any], *, long:
     out: list[Line] = []
     for s in segments:
         text = s.text if (s.text or s.edited) else s.raw_text
-        text = " ".join(_neutralize(text or "").split())
+        text = " ".join(neutralize(text or "", _TAGS).split())
         if not text:
             continue
         speaker = resolve_speaker(speakers, s.speaker)
@@ -176,7 +135,7 @@ def transcript_lines(segments: Iterable[Any], speakers: dict[str, Any], *, long:
 def speaker_roster(speakers: dict[str, Any], used: Iterable[str]) -> str:
     """说话人对照：S3=张老师（已确认） / S4=未命名。只列逐字稿里出现的（合并后的）编号。"""
     entries: list[str] = []
-    for sid in sorted(set(used), key=_speaker_order):
+    for sid in sorted(set(used), key=speaker_sort_key):
         info = speakers.get(sid)
         info = info if isinstance(info, dict) else {}
         name = str(info.get("name") or "").strip()
@@ -189,10 +148,6 @@ def speaker_roster(speakers: dict[str, Any], used: Iterable[str]) -> str:
         else:
             entries.append(f"{sid}=未命名")
     return " / ".join(entries)
-
-
-def is_long(duration_ms: int) -> bool:
-    return duration_ms > LONG_MS
 
 
 # ---------- 后处理 ----------
@@ -316,7 +271,7 @@ def minutes_messages(
         parts.append(
             "这场会议很长，下面不是逐字稿原文，而是按时间顺序分段整理出的提要，时间戳都是会议内的绝对时间。"
             "合并时把跨段的同一议题归到一起、去掉重复，保留各条原有的时间戳：\n"
-            f"<notes>\n{_neutralize(blocks)}\n</notes>"
+            f"<notes>\n{neutralize(blocks, _TAGS)}\n</notes>"
         )
     else:
         body = "\n".join(line.text for line in lines or [])

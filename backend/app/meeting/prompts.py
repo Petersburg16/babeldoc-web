@@ -2,18 +2,20 @@
 
 整理规则参考 OpenTypeless（MIT）的 BASE_PROMPT / THOUGHT_AWARE_RULES，按会议逐字稿的场景用中文重写：
 逐句对应输出便于校验、保守处理口误和听不准的词、逐字稿一律当作不可信内容。
+纪要和对话的提示词分别在 minutes.py、chat.py；几处共用的标签中和在 format.neutralize。
 """
 
 from __future__ import annotations
 
-import re
+from .format import neutralize
 
 # 逐字稿里如果有人恰好说出（或被识别成）这些标签，换成全角，免得提前“闭合”我们包裹正文的标签
-_TAGS = re.compile(r"<\s*(/?)\s*(transcript|context)\s*>", re.IGNORECASE)
+_TAGS = ("transcript", "context")
 
 
 def fence(text: str) -> str:
-    return _TAGS.sub(lambda m: f"＜{m.group(1)}{m.group(2)}＞", text).replace("\r", " ").replace("\n", " ")
+    """中和标签并压成一行：整理和说话人识别的提示词都是一行一句，正文里的换行会打乱行。"""
+    return neutralize(text, _TAGS).replace("\r", " ").replace("\n", " ")
 
 
 UNTRUSTED = (

@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from ..llm import LlmClient
 from ..models import Meeting, MeetingSegment
 from . import prompts
+from .format import copy_speakers, speaker_sort_key
 from .llmcall import ask
 
 if TYPE_CHECKING:
@@ -54,10 +55,6 @@ class Guess:
 class Row:
     speaker: str
     text: str
-
-
-def speaker_number(sid: str) -> int:
-    return int(sid[1:]) if sid[1:].isdigit() else 10**6
 
 
 def lock_meeting(db: Session, meeting_id: str) -> None:
@@ -188,7 +185,7 @@ def apply_merge_hints(speakers: dict[str, dict[str, Any]], candidates: set[str])
     def key(name: str) -> str:
         return re.sub(r"\s+", "", name).lower()
 
-    order = sorted(speakers, key=speaker_number)
+    order = sorted(speakers, key=speaker_sort_key)
     claimed: dict[str, str] = {}
     for sid in order:
         info = speakers[sid]
@@ -218,14 +215,14 @@ async def guess_speakers(manager: MeetingManager, meeting_id: str, client: LlmCl
     speakers, rows = loaded
     candidates = [
         sid
-        for sid in sorted(speakers, key=speaker_number)
+        for sid in sorted(speakers, key=speaker_sort_key)
         if not str(speakers[sid].get("name") or "").strip() and not speakers[sid].get("merged_into")
     ]
     if not candidates or not rows:
         return 0
     known = {
         sid: prompts.fence(str(info["name"]).strip())
-        for sid, info in sorted(speakers.items(), key=lambda kv: speaker_number(kv[0]))
+        for sid, info in sorted(speakers.items(), key=lambda kv: speaker_sort_key(kv[0]))
         if str(info.get("name") or "").strip() and not info.get("merged_into")
     }
     excerpt = pick_excerpt(rows, set(candidates))
@@ -247,7 +244,7 @@ def _load(manager: MeetingManager, meeting_id: str) -> tuple[dict[str, dict[str,
         m = db.get(Meeting, meeting_id)
         if m is None or m.deleted_at is not None:
             return None
-        speakers = {k: dict(v) for k, v in (m.speakers or {}).items() if isinstance(v, dict)}
+        speakers = copy_speakers(m.speakers)
         rows = [
             Row(speaker, text.strip())
             for speaker, text in db.execute(
@@ -267,7 +264,7 @@ def _store(manager: MeetingManager, meeting_id: str, candidates: set[str], guess
         if m is None or m.deleted_at is not None:
             return
         db.refresh(m)
-        speakers = {k: dict(v) for k, v in (m.speakers or {}).items() if isinstance(v, dict)}
+        speakers = copy_speakers(m.speakers)
         touched: set[str] = set()
         for sid in candidates:
             info = speakers.get(sid)

@@ -36,6 +36,7 @@ from . import processing, split
 from .align import Alignment, MergedSegment, align_parts
 from .asr import adapter_class, load_secrets
 from .asr.base import AsrAdapter, AsrError, SubmitOptions
+from .format import new_speaker_entry
 from .media import AUDIO_NAME, FfmpegProcess, MediaError, probe, tone, transcode_args
 from .schemas import MeetingOut
 
@@ -614,7 +615,7 @@ class MeetingManager:
             db.execute(delete(MeetingSegment).where(MeetingSegment.meeting_id == meeting_id))
             speakers: dict[str, Any] = {}
             for i, seg in enumerate(merged):
-                speakers.setdefault(seg.speaker, {"name": "", "guess": None, "merged_into": None, "merge_hint": None})
+                speakers.setdefault(seg.speaker, new_speaker_entry())
                 db.add(
                     MeetingSegment(
                         meeting_id=meeting_id,

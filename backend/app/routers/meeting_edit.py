@@ -15,10 +15,11 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ..deps import CtxDep, DbDep, UserDep
+from ..meeting.format import copy_speakers, new_speaker_entry, resolve_speaker, speaker_number
 from ..meeting.llm_config import resolve_meeting_llm
 from ..meeting.processing import OP_LABELS, OPS
 from ..meeting.schemas import MeetingDetailOut, MeetingOut, SegmentOut
-from ..meeting.speakers import lock_meeting, speaker_number
+from ..meeting.speakers import lock_meeting
 from ..meeting.templates import TemplateId
 from ..models import Meeting, MeetingSegment, User
 from .meetings import detail_out, own_meeting, usable_preset
@@ -66,26 +67,11 @@ def _locked(db: Session, user: User, meeting_id: str) -> Meeting:
     return m
 
 
-def _speakers(m: Meeting) -> dict[str, dict[str, Any]]:
-    # 拷贝一份再改，最后整体赋回去：SQLAlchemy 不追踪 JSON 列的就地修改
-    return {k: dict(v) for k, v in (m.speakers or {}).items() if isinstance(v, dict)}
-
-
 def _known(speakers: dict[str, dict[str, Any]], sid: str) -> dict[str, Any]:
     info = speakers.get(sid)
     if info is None:
         raise HTTPException(404, "说话人不存在")
     return info
-
-
-def _resolve(speakers: dict[str, dict[str, Any]], sid: str) -> str:
-    current = sid
-    for _ in range(len(speakers) + 1):
-        target = speakers.get(current, {}).get("merged_into")
-        if not target or target == current or target not in speakers:
-            break
-        current = target
-    return current
 
 
 def _segment(db: Session, meeting_id: str, idx: int) -> MeetingSegment:
@@ -128,15 +114,15 @@ def edit_segment(meeting_id: str, idx: int, body: SegmentPatch, user: UserDep, d
             seg.edited = True
             changed = True
     if body.speaker is not None:
-        speakers = _speakers(m)
+        speakers = copy_speakers(m.speakers)
         if body.speaker == "new":
             number = max((speaker_number(k) for k in speakers if k[1:].isdigit()), default=0) + 1
             target = f"S{number}"
-            speakers[target] = {"name": "", "guess": None, "merged_into": None}
+            speakers[target] = new_speaker_entry()
             m.speakers = speakers
         else:
             _known(speakers, body.speaker)
-            target = _resolve(speakers, body.speaker)
+            target = resolve_speaker(speakers, body.speaker, known_only=True)
         if target != seg.speaker:
             seg.speaker = target
             changed = True
@@ -165,12 +151,12 @@ def revert_segment(meeting_id: str, idx: int, user: UserDep, db: DbDep, ctx: Ctx
 @router.post("/{meeting_id}/speakers/merge")
 def merge_speakers(meeting_id: str, body: MergeIn, user: UserDep, db: DbDep, ctx: CtxDep) -> MeetingDetailOut:
     m = _locked(db, user, meeting_id)
-    speakers = _speakers(m)
+    speakers = copy_speakers(m.speakers)
     source = _known(speakers, body.source)
     _known(speakers, body.target)
     if source.get("merged_into"):
         raise HTTPException(400, "这位说话人已经合并过了，请先撤销")
-    target = _resolve(speakers, body.target)
+    target = resolve_speaker(speakers, body.target, known_only=True)
     if target == body.source:
         raise HTTPException(400, "不能合并到自己")
     db.execute(
@@ -197,11 +183,11 @@ def merge_speakers(meeting_id: str, body: MergeIn, user: UserDep, db: DbDep, ctx
 @router.post("/{meeting_id}/speakers/unmerge")
 def unmerge_speaker(meeting_id: str, body: UnmergeIn, user: UserDep, db: DbDep, ctx: CtxDep) -> MeetingDetailOut:
     m = _locked(db, user, meeting_id)
-    speakers = _speakers(m)
+    speakers = copy_speakers(m.speakers)
     info = _known(speakers, body.speaker)
     if not info.get("merged_into"):
         raise HTTPException(400, "这位说话人没有被合并")
-    target = _resolve(speakers, body.speaker)
+    target = resolve_speaker(speakers, body.speaker, known_only=True)
     # 只还原识别时就属于这位的句子；手动改过归属的句子保持不动
     db.execute(
         update(MeetingSegment)
@@ -224,7 +210,7 @@ def unmerge_speaker(meeting_id: str, body: UnmergeIn, user: UserDep, db: DbDep, 
 @router.post("/{meeting_id}/speakers/accept-guesses")
 def accept_guesses(meeting_id: str, body: AcceptGuessesIn, user: UserDep, db: DbDep, ctx: CtxDep) -> MeetingDetailOut:
     m = _locked(db, user, meeting_id)
-    speakers = _speakers(m)
+    speakers = copy_speakers(m.speakers)
     if body.speakers is None:
         # 全部采纳时不覆盖已经命名的
         wanted = [sid for sid, info in speakers.items() if not str(info.get("name") or "").strip()]
@@ -246,7 +232,7 @@ def rename_speaker(
     meeting_id: str, speaker: str, body: RenameIn, user: UserDep, db: DbDep, ctx: CtxDep
 ) -> MeetingDetailOut:
     m = _locked(db, user, meeting_id)
-    speakers = _speakers(m)
+    speakers = copy_speakers(m.speakers)
     info = _known(speakers, speaker)
     info["name"] = " ".join(_CONTROL.sub(" ", body.name).split())  # 空字符串表示取消命名，显示回“说话人 N”
     m.speakers = speakers

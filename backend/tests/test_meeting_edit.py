@@ -132,7 +132,7 @@ def test_edit_speaker(app, admin_client):
     ).json()
     assert seg["speaker"] == "S4" and seg["edited"] is True
     m = detail(admin_client, mid)
-    assert m["speakers"]["S4"] == {"name": "", "guess": None, "merged_into": None}
+    assert m["speakers"]["S4"] == {"name": "", "guess": None, "merged_into": None, "merge_hint": None}
     assert m["transcript_rev"] == 5, "一次请求同时改文字和说话人只加一次"
 
     assert admin_client.patch(f"/api/meetings/{mid}/segments/0", json={"speaker": "S9"}).status_code == 404
