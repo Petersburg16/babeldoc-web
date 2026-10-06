@@ -18,11 +18,12 @@
   } from '../../lib/icons';
   import { meetingApi } from '../../lib/meeting/api';
   import { STEP_LABELS } from '../../lib/meeting/format';
+  import { EFFORT_LABELS, STEPS, effortShort, failedTest, stepFacts, testSummary } from '../../lib/meeting/llm';
   import type { LlmModelAdmin, LlmTestResult, PresetAdmin } from '../../lib/meeting/types';
   import { toast } from '../../lib/toast.svelte';
   import type { ModelAdmin } from '../../lib/types';
-  import LlmModelModal, { EFFORT_LABELS, failedTest, testSummary } from './LlmModelModal.svelte';
-  import PresetModal, { STEPS, effortShort, stepFacts } from './PresetModal.svelte';
+  import LlmModelModal from './LlmModelModal.svelte';
+  import PresetModal from './PresetModal.svelte';
 
   let models = $state<LlmModelAdmin[]>([]);
   let presets = $state<PresetAdmin[]>([]);

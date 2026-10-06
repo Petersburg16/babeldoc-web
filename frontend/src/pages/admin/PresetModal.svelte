@@ -1,69 +1,3 @@
-<script module lang="ts">
-  import type { CustomParam, EffortChoice, LlmStep, StepConfig } from '../../lib/meeting/types';
-  import { EFFORT_LABELS } from './LlmModelModal.svelte';
-
-  export const STEPS: LlmStep[] = ['speakers', 'polish', 'minutes', 'chat'];
-  // 与后端 DEFAULT_TIMEOUTS 一致
-  const DEFAULT_TIMEOUTS: Record<LlmStep, number> = { speakers: 300, polish: 300, minutes: 900, chat: 600 };
-
-  export function effortShort(choice: EffortChoice) {
-    return choice === 'default' ? '默认' : EFFORT_LABELS[choice];
-  }
-
-  /** 打开了的参数开关、改过的超时和自定义参数，用于卡片和折叠时的摘要 */
-  export function stepFacts(sc: StepConfig, step: LlmStep): string[] {
-    const facts: string[] = [];
-    if (sc.temperature.on) facts.push(`温度 ${sc.temperature.value}`);
-    if (sc.top_p.on) facts.push(`Top-P ${sc.top_p.value}`);
-    if (sc.max_tokens.on) facts.push(`最大输出 ${sc.max_tokens.value}`);
-    if (sc.timeout_s !== DEFAULT_TIMEOUTS[step]) facts.push(`超时 ${sc.timeout_s} 秒`);
-    if (sc.params.length) facts.push(`自定义 ${sc.params.map((p) => p.name).join('、')}`);
-    return facts;
-  }
-
-  const RESERVED_PARAMS = ['model', 'messages', 'stream', 'stream_options'];
-  const PARAM_NAME = /^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/;
-  const NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
-
-  /** 和后端 CustomParam 的校验一致，空字符串表示没问题 */
-  function paramError(sc: StepConfig, index: number): string {
-    const p = sc.params[index];
-    const name = p.name.trim();
-    if (!name) return '请填写参数名';
-    if (RESERVED_PARAMS.includes(name)) return `“${name}”由本站自己填写，不能作为自定义参数`;
-    if (!PARAM_NAME.test(name)) return '参数名只能用字母、数字、下划线、点和连字符，且以字母或下划线开头';
-    if (sc.params.findIndex((q) => q.name.trim() === name) !== index) return '参数名重复了';
-    const toggled: Record<string, boolean> = {
-      temperature: sc.temperature.on,
-      top_p: sc.top_p.on,
-      max_tokens: sc.max_tokens.on,
-      max_completion_tokens: sc.max_tokens.on,
-    };
-    if (toggled[name]) return '和上面打开的开关重复了，请只保留一处';
-    const raw = p.value.trim();
-    if (p.type === 'number' && !NUMBER.test(raw)) return '不是数字';
-    if (p.type === 'boolean' && raw !== 'true' && raw !== 'false') return '只能是 true 或 false';
-    if (p.type === 'json') {
-      try {
-        JSON.parse(raw);
-      } catch {
-        return 'JSON 格式错误';
-      }
-    }
-    return '';
-  }
-
-  const inRange = (v: unknown, min: number, max: number, integer = false) =>
-    typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max && (!integer || Number.isInteger(v));
-
-  const PARAM_TYPES: { value: CustomParam['type']; label: string }[] = [
-    { value: 'string', label: '文本' },
-    { value: 'number', label: '数字' },
-    { value: 'boolean', label: '布尔' },
-    { value: 'json', label: 'JSON' },
-  ];
-</script>
-
 <script lang="ts">
   import { tick } from 'svelte';
   import Modal from '../../components/Modal.svelte';
@@ -73,8 +7,18 @@
   import { ChevronDown, CircleCheck, CircleX, Copy, FlaskConical, LoaderCircle, Plus, Trash2, TriangleAlert } from '../../lib/icons';
   import { meetingApi } from '../../lib/meeting/api';
   import { STEP_LABELS } from '../../lib/meeting/format';
-  import type { LlmModelAdmin, LlmTestResult, PresetAdmin, PresetSteps } from '../../lib/meeting/types';
-  import { failedTest, testSummary } from './LlmModelModal.svelte';
+  import {
+    EFFORT_LABELS,
+    STEPS,
+    cleanStep,
+    failedTest,
+    newStep,
+    paramError,
+    stepError,
+    stepFacts,
+    testSummary,
+  } from '../../lib/meeting/llm';
+  import type { CustomParam, LlmModelAdmin, LlmStep, LlmTestResult, PresetAdmin, PresetSteps, StepConfig } from '../../lib/meeting/types';
 
   interface Props {
     /** null 表示新建 */
@@ -96,6 +40,12 @@
     minutes: '按模板写纪要；逐字稿较长时先逐段写提要',
     chat: '成员就会议内容提问',
   };
+  const PARAM_TYPES: { value: CustomParam['type']; label: string }[] = [
+    { value: 'string', label: '文本' },
+    { value: 'number', label: '数字' },
+    { value: 'boolean', label: '布尔' },
+    { value: 'json', label: 'JSON' },
+  ];
 
   interface Draft {
     name: string;
@@ -104,18 +54,6 @@
     enabled: boolean;
     sort_order: number;
     steps: PresetSteps;
-  }
-
-  function newStep(step: LlmStep, modelId: number | null): StepConfig {
-    return {
-      model_id: modelId,
-      effort: 'default',
-      temperature: { on: false, value: 1 },
-      top_p: { on: false, value: 1 },
-      max_tokens: { on: false, value: 4096 },
-      timeout_s: DEFAULT_TIMEOUTS[step],
-      params: [],
-    };
   }
 
   function initial(): Draft {
@@ -184,44 +122,6 @@
     if (type === 'boolean' && p.value.trim() !== 'true' && p.value.trim() !== 'false') p.value = 'true';
   }
 
-  /** 保存前检查一个用途，返回给人看的错误；null 表示没问题 */
-  function stepError(step: LlmStep): { text: string; advanced: boolean } | null {
-    const sc = draft.steps[step];
-    const label = STEP_LABELS[step];
-    const model = sc.model_id !== null ? modelMap.get(sc.model_id) : undefined;
-    if (!model) return { text: `请给“${label}”选一个模型`, advanced: false };
-    if (sc.effort !== 'default' && !model.effort_levels.includes(sc.effort)) {
-      return { text: `“${label}”的思考强度不在模型“${model.name}”的档位里，请重新选择`, advanced: false };
-    }
-    if (sc.temperature.on && !inRange(sc.temperature.value, 0, 2)) {
-      return { text: `“${label}”的模型温度要在 0 到 2 之间`, advanced: true };
-    }
-    if (sc.top_p.on && !inRange(sc.top_p.value, 0, 1)) return { text: `“${label}”的 Top-P 要在 0 到 1 之间`, advanced: true };
-    if (sc.max_tokens.on && !inRange(sc.max_tokens.value, 1, 1_000_000, true)) {
-      return { text: `“${label}”的最大输出要是 1 到 1000000 之间的整数`, advanced: true };
-    }
-    if (!inRange(sc.timeout_s, 30, 7200, true)) return { text: `“${label}”的超时要是 30 到 7200 之间的整数（秒）`, advanced: true };
-    for (let i = 0; i < sc.params.length; i++) {
-      const problem = paramError(sc, i);
-      if (problem) return { text: `“${label}”的自定义参数 ${sc.params[i].name.trim() || i + 1}：${problem}`, advanced: true };
-    }
-    return null;
-  }
-
-  /** 关着的开关不发送，但后端照样校验数值范围：不合法的换回默认值 */
-  function cleanStep(sc: StepConfig): StepConfig {
-    const keep = (on: boolean, value: number, ok: boolean, fallback: number) => ({ on, value: ok ? value : fallback });
-    return {
-      model_id: sc.model_id,
-      effort: sc.effort,
-      temperature: keep(sc.temperature.on, sc.temperature.value, inRange(sc.temperature.value, 0, 2), 1),
-      top_p: keep(sc.top_p.on, sc.top_p.value, inRange(sc.top_p.value, 0, 1), 1),
-      max_tokens: keep(sc.max_tokens.on, sc.max_tokens.value, inRange(sc.max_tokens.value, 1, 1_000_000, true), 4096),
-      timeout_s: sc.timeout_s,
-      params: sc.params.map((p) => ({ name: p.name.trim(), type: p.type, value: p.value })),
-    };
-  }
-
   async function showError(text: string) {
     error = text;
     await tick();
@@ -232,7 +132,8 @@
     event.preventDefault();
     if (saving) return;
     for (const step of STEPS) {
-      const problem = stepError(step);
+      const sc = draft.steps[step];
+      const problem = stepError(step, sc, sc.model_id !== null ? modelMap.get(sc.model_id) : undefined);
       if (problem) {
         if (problem.advanced) advanced[step] = true;
         await showError(problem.text);

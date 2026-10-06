@@ -1,51 +1,12 @@
-<script module lang="ts">
-  import { errorText } from '../../lib/format';
-  import type { EffortLevel, LlmTestResult } from '../../lib/meeting/types';
-
-  /** 思考强度从低到高，和后端 EFFORT_ORDER 一致 */
-  const EFFORT_ORDER: EffortLevel[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
-  export const EFFORT_LABELS: Record<EffortLevel, string> = {
-    none: '关闭',
-    minimal: '极低',
-    low: '低',
-    medium: '中',
-    high: '高',
-    xhigh: '很高',
-    max: '最高',
-  };
-
-  /** 测试结果的一行摘要：成功时带回复，失败时带原因 */
-  export function testSummary(r: LlmTestResult) {
-    const facts = [
-      r.ok ? '连接正常' : r.error || '测试失败',
-      r.latency_ms !== null ? `${(r.latency_ms / 1000).toFixed(1)} 秒` : '',
-      r.ok || r.reasoning_tokens ? `思考 ${r.reasoning_tokens} token` : '',
-      r.finish_reason ? `结束原因 ${r.finish_reason}` : '',
-    ].filter(Boolean);
-    return facts.join(' · ') + (r.ok ? ` · 回复：${r.reply || '（空）'}` : '');
-  }
-
-  export function failedTest(e: unknown): LlmTestResult {
-    return {
-      ok: false,
-      latency_ms: null,
-      reply: null,
-      error: errorText(e),
-      tokens: 0,
-      reasoning_tokens: 0,
-      finish_reason: null,
-      sent: {},
-    };
-  }
-</script>
-
 <script lang="ts">
   import { tick } from 'svelte';
   import Modal from '../../components/Modal.svelte';
   import Switch from '../../components/Switch.svelte';
+  import { errorText } from '../../lib/format';
   import { LoaderCircle } from '../../lib/icons';
   import { meetingApi } from '../../lib/meeting/api';
-  import type { LlmModelAdmin, LlmProbeIn } from '../../lib/meeting/types';
+  import { EFFORT_LABELS, EFFORT_ORDER } from '../../lib/meeting/llm';
+  import type { EffortLevel, LlmModelAdmin, LlmProbeIn } from '../../lib/meeting/types';
   import type { ModelAdmin } from '../../lib/types';
 
   interface Props {
