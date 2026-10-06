@@ -22,7 +22,7 @@ from sqlalchemy import select
 
 from ..db import utcnow
 from ..llm import ChatResult, LlmError
-from ..models import Meeting, MeetingSegment
+from ..models import MeetingSegment, live_meeting
 from ..settings_store import load_settings
 from .format import clock, is_long, neutralize, resolve_speaker, speaker_sort_key, spoken
 from .llmcall import add_tokens
@@ -369,8 +369,8 @@ def _load_lines(
 
 def _finish(manager: MeetingManager, meeting_id: str, usage: _Usage, **values: Any) -> None:
     with manager.Session() as db:
-        m = db.get(Meeting, meeting_id)
-        if m is None or m.deleted_at is not None:
+        m = live_meeting(db, meeting_id)
+        if m is None:
             return
         for key, value in values.items():
             setattr(m, key, value)
@@ -382,8 +382,8 @@ def _finish(manager: MeetingManager, meeting_id: str, usage: _Usage, **values: A
 def _restore(manager: MeetingManager, meeting_id: str, usage: _Usage) -> None:
     """被取消：退回生成前的样子（已有纪要就算 ready），免得界面一直显示“生成中”。"""
     with manager.Session() as db:
-        m = db.get(Meeting, meeting_id)
-        if m is None or m.deleted_at is not None:
+        m = live_meeting(db, meeting_id)
+        if m is None:
             return
         m.minutes_state = "ready" if m.minutes_md else "none"
         db.commit()
@@ -462,8 +462,8 @@ async def generate_minutes(
             on_progress(max(0.0, min(1.0, ratio)))
 
     with manager.Session() as db:
-        m = db.get(Meeting, meeting_id)
-        if m is None or m.deleted_at is not None:
+        m = live_meeting(db, meeting_id)
+        if m is None:
             return None
         if template is not None:
             m.template = get_template(template).id

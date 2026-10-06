@@ -35,6 +35,11 @@ class AppContext:
     limiter: LoginLimiter = field(default_factory=LoginLimiter)
     engine_version: str | None = None
 
+    @property
+    def dev_mode(self) -> bool:
+        """用模拟引擎跑（开发、测试）：会议记录额外提供模拟识别服务。"""
+        return self.config.engine == "mock"
+
 
 def get_ctx(request: Request) -> AppContext:
     return request.app.state.ctx

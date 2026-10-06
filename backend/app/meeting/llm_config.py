@@ -24,8 +24,9 @@ from ..security import SecretBox
 
 Step = Literal["speakers", "polish", "minutes", "chat"]
 STEPS: tuple[Step, ...] = ("speakers", "polish", "minutes", "chat")
+# 四个用途的中文名，进度、警告、操作提示、后台方案都用这一份（前端对应 lib/meeting/format.ts 的 STEP_LABELS）
 STEP_LABELS: dict[str, str] = {
-    "speakers": "猜说话人",
+    "speakers": "识别说话人",
     "polish": "整理逐字稿",
     "minutes": "生成纪要",
     "chat": "对话问答",

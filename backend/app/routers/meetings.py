@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
-import re
 import shutil
 from pathlib import Path
 from typing import Annotated
@@ -44,15 +43,15 @@ from ..models import (
     MeetingLlmPreset,
     MeetingMessage,
     MeetingSegment,
-    User,
+    join_warnings,
+    live_meeting,
 )
 from ..security import new_job_id
 from ..settings_store import load_settings
-from ..uploads import clean_filename
+from ..uploads import clean_filename, clean_line
 
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
 
-CONTROL = re.compile(r"[\x00-\x1f\x7f\ufffe\uffff]")
 PART_SIZE = 8 * 1024 * 1024  # 分片上传每片 8 MB：远低于 Cloudflare 单请求 100 MB 的上限，断了重传也便宜
 AUDIO_EXTENSIONS = {
     ".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg", ".oga", ".opus", ".wma", ".amr", ".aiff", ".aif", ".caf",
@@ -60,13 +59,9 @@ AUDIO_EXTENSIONS = {
 }  # fmt: skip
 
 
-def dev_mode(ctx: AppContext) -> bool:
-    return ctx.config.engine == "mock"
-
-
-def own_meeting(db: Session, user: User, meeting_id: str) -> Meeting:
-    m = db.get(Meeting, meeting_id)
-    if m is None or m.deleted_at is not None or m.user_id != user.id:
+def own_meeting(db: Session, user_id: int, meeting_id: str) -> Meeting:
+    m = live_meeting(db, meeting_id)
+    if m is None or m.user_id != user_id:
         raise HTTPException(404, "会议不存在")
     return m
 
@@ -77,7 +72,7 @@ def detail_out(ctx: AppContext, db: Session, m: Meeting) -> MeetingDetailOut:
 
 
 def usable_provider(db: Session, ctx: AppContext, provider_id: int | None) -> AsrProvider:
-    kinds = {cls.kind for cls in available_kinds(dev_mode(ctx))}
+    kinds = {cls.kind for cls in available_kinds(ctx.dev_mode)}
     query = select(AsrProvider).where(AsrProvider.enabled.is_(True), AsrProvider.kind.in_(kinds))
     if provider_id is not None:
         provider = db.scalar(query.where(AsrProvider.id == provider_id))
@@ -105,7 +100,7 @@ def usable_preset(db: Session, preset_id: int | None) -> MeetingLlmPreset | None
 @router.get("/options")
 def options(user: UserDep, db: DbDep, ctx: CtxDep) -> MeetingOptionsOut:
     settings = load_settings(db)
-    kinds = {cls.kind: cls for cls in available_kinds(dev_mode(ctx))}
+    kinds = {cls.kind: cls for cls in available_kinds(ctx.dev_mode)}
     rows = db.scalars(
         select(AsrProvider)
         .where(AsrProvider.enabled.is_(True), AsrProvider.kind.in_(kinds))
@@ -188,7 +183,7 @@ def create_meeting(body: MeetingCreate, user: UserDep, db: DbDep, ctx: CtxDep) -
     meeting = Meeting(
         id=new_job_id(),
         user_id=user.id,
-        title=(" ".join(CONTROL.sub(" ", body.title).split()) or Path(filename).stem)[:200],
+        title=(clean_line(body.title) or Path(filename).stem)[:200],
         filename=filename,
         file_size=body.size,
         language=body.language,
@@ -230,7 +225,7 @@ def _expected_part_size(total: int, index: int) -> int:
 @router.put("/{meeting_id}/upload/{index}")
 async def upload_part(meeting_id: str, index: int, request: Request, user: UserDep, ctx: CtxDep) -> dict[str, int]:
     with ctx.Session() as db:
-        m = own_meeting(db, user, meeting_id)
+        m = own_meeting(db, user.id, meeting_id)
         if m.status != "uploading":
             raise HTTPException(409, "这场会议已经上传完成")
         expected = _expected_part_size(m.file_size, index)
@@ -259,7 +254,7 @@ async def upload_part(meeting_id: str, index: int, request: Request, user: UserD
 
 @router.post("/{meeting_id}/upload/complete")
 def complete_upload(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> MeetingOut:
-    m = own_meeting(db, user, meeting_id)
+    m = own_meeting(db, user.id, meeting_id)
     if m.status != "uploading":
         raise HTTPException(409, "这场会议已经上传完成")
     directory = ctx.meetings.meeting_dir(meeting_id)
@@ -288,14 +283,14 @@ def complete_upload(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> M
 
 @router.get("/{meeting_id}")
 def get_meeting(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> MeetingDetailOut:
-    return detail_out(ctx, db, own_meeting(db, user, meeting_id))
+    return detail_out(ctx, db, own_meeting(db, user.id, meeting_id))
 
 
 @router.patch("/{meeting_id}")
 def patch_meeting(meeting_id: str, body: MeetingPatch, user: UserDep, db: DbDep, ctx: CtxDep) -> MeetingDetailOut:
-    m = own_meeting(db, user, meeting_id)
+    m = own_meeting(db, user.id, meeting_id)
     if body.title is not None:
-        m.title = " ".join(CONTROL.sub(" ", body.title).split()) or m.title
+        m.title = clean_line(body.title) or m.title
     if body.template is not None:
         m.template = body.template
     if body.extra_instructions is not None:
@@ -311,7 +306,7 @@ def patch_meeting(meeting_id: str, body: MeetingPatch, user: UserDep, db: DbDep,
 
 @router.get("/{meeting_id}/segments")
 def list_segments(meeting_id: str, user: UserDep, db: DbDep) -> list[SegmentOut]:
-    own_meeting(db, user, meeting_id)
+    own_meeting(db, user.id, meeting_id)
     rows = db.scalars(
         select(MeetingSegment).where(MeetingSegment.meeting_id == meeting_id).order_by(MeetingSegment.idx)
     ).all()
@@ -320,7 +315,7 @@ def list_segments(meeting_id: str, user: UserDep, db: DbDep) -> list[SegmentOut]
 
 @router.api_route("/{meeting_id}/audio", methods=["GET", "HEAD"])
 def meeting_audio(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> FileResponse:
-    m = own_meeting(db, user, meeting_id)
+    m = own_meeting(db, user.id, meeting_id)
     path = ctx.meetings.meeting_dir(m.id) / AUDIO_NAME
     if m.audio_purged or not path.is_file():
         raise HTTPException(404, "录音已过保留期清理")
@@ -329,7 +324,7 @@ def meeting_audio(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> Fil
 
 @router.post("/{meeting_id}/cancel")
 def cancel_meeting(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> MeetingOut:
-    m = own_meeting(db, user, meeting_id)
+    m = own_meeting(db, user.id, meeting_id)
     if m.status not in MEETING_ACTIVE:
         raise HTTPException(409, "这场会议已经结束，无法取消")
     ctx.meetings.request_cancel(meeting_id)
@@ -338,7 +333,7 @@ def cancel_meeting(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> Me
 
 @router.post("/{meeting_id}/retry")
 def retry_meeting(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> MeetingOut:
-    m = own_meeting(db, user, meeting_id)
+    m = own_meeting(db, user.id, meeting_id)
     if m.status not in MEETING_RETRYABLE:
         raise HTTPException(409, "只有失败或已取消的会议可以重试")
     if ctx.meetings.is_running(meeting_id):
@@ -369,7 +364,7 @@ def retry_meeting(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> Mee
             error_kind=None,
             finished_at=None,
             stage="",
-            warning="\n".join(kept.values()) or None,
+            warning=join_warnings(kept),
             warnings=kept,
         )
     ).rowcount
@@ -403,7 +398,7 @@ def retry_part(part: dict, directory: Path) -> dict:
 
 @router.delete("/{meeting_id}", status_code=204)
 def delete_meeting(meeting_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> None:
-    m = own_meeting(db, user, meeting_id)
+    m = own_meeting(db, user.id, meeting_id)
     if m.status == "uploading":
         db.delete(m)
     else:

@@ -17,7 +17,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ..llm import LlmClient
-from ..models import Meeting, MeetingSegment
+from ..models import Meeting, MeetingSegment, live_meeting
 from . import prompts
 from .format import copy_speakers, speaker_sort_key
 from .llmcall import ask
@@ -241,8 +241,8 @@ async def guess_speakers(manager: MeetingManager, meeting_id: str, client: LlmCl
 
 def _load(manager: MeetingManager, meeting_id: str) -> tuple[dict[str, dict[str, Any]], list[Row]] | None:
     with manager.Session() as db:
-        m = db.get(Meeting, meeting_id)
-        if m is None or m.deleted_at is not None:
+        m = live_meeting(db, meeting_id)
+        if m is None:
             return None
         speakers = copy_speakers(m.speakers)
         rows = [
@@ -260,8 +260,8 @@ def _load(manager: MeetingManager, meeting_id: str) -> tuple[dict[str, dict[str,
 def _store(manager: MeetingManager, meeting_id: str, candidates: set[str], guesses: dict[str, Guess]) -> None:
     with manager.Session() as db:
         lock_meeting(db, meeting_id)
-        m = db.get(Meeting, meeting_id)
-        if m is None or m.deleted_at is not None:
+        m = live_meeting(db, meeting_id)
+        if m is None:
             return
         db.refresh(m)
         speakers = copy_speakers(m.speakers)

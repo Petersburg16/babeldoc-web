@@ -16,12 +16,13 @@ from sqlalchemy.orm import Session
 
 from ..deps import CtxDep, DbDep, UserDep
 from ..meeting.format import copy_speakers, new_speaker_entry, resolve_speaker, speaker_number
-from ..meeting.llm_config import resolve_meeting_llm
-from ..meeting.processing import OP_LABELS, OPS
+from ..meeting.llm_config import STEP_LABELS, resolve_meeting_llm
+from ..meeting.processing import OPS
 from ..meeting.schemas import MeetingDetailOut, MeetingOut, SegmentOut
 from ..meeting.speakers import lock_meeting
 from ..meeting.templates import TemplateId
 from ..models import Meeting, MeetingSegment, User
+from ..uploads import clean_line
 from .meetings import detail_out, own_meeting, usable_preset
 
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
@@ -61,7 +62,7 @@ class OpIn(BaseModel):
 
 def _locked(db: Session, user: User, meeting_id: str) -> Meeting:
     """取会议并拿到写锁，后面读改写 speakers 时不会和后台的说话人识别互相覆盖。"""
-    m = own_meeting(db, user, meeting_id)
+    m = own_meeting(db, user.id, meeting_id)
     lock_meeting(db, meeting_id)
     db.refresh(m)
     return m
@@ -234,7 +235,7 @@ def rename_speaker(
     m = _locked(db, user, meeting_id)
     speakers = copy_speakers(m.speakers)
     info = _known(speakers, speaker)
-    info["name"] = " ".join(_CONTROL.sub(" ", body.name).split())  # 空字符串表示取消命名，显示回“说话人 N”
+    info["name"] = clean_line(body.name)  # 空字符串表示取消命名，显示回“说话人 N”
     m.speakers = speakers
     db.commit()
     ctx.meetings.publish(meeting_id)
@@ -246,11 +247,11 @@ def start_op(meeting_id: str, op: str, user: UserDep, db: DbDep, ctx: CtxDep, bo
     if op not in OPS:
         raise HTTPException(404, "未知的操作")
     body = body or OpIn()
-    m = own_meeting(db, user, meeting_id)
+    m = own_meeting(db, user.id, meeting_id)
     if m.status != "done":
         raise HTTPException(409, "会议还没处理完，请稍后再试")
     if m.op:
-        raise HTTPException(409, f"正在{OP_LABELS.get(m.op, '处理')}，请等它完成")
+        raise HTTPException(409, f"正在{STEP_LABELS.get(m.op, '处理')}，请等它完成")
     params: dict[str, Any] = {}
     values: dict[str, Any] = {"op": op}
     preset_id = m.llm_preset_id

@@ -73,7 +73,7 @@ class MeetingOut(BaseModel):
             progress=round(m.progress or 0, 2),
             transcript_state=m.transcript_state,
             minutes_state=m.minutes_state,
-            minutes_stale=bool(m.minutes_md) and m.minutes_rev is not None and m.minutes_rev != m.transcript_rev,
+            minutes_stale=m.minutes_stale,
             transcript_rev=m.transcript_rev or 0,
             op=m.op,
             error=m.error,

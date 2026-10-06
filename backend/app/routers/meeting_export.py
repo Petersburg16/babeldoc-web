@@ -21,7 +21,7 @@ from ..meeting.export import (
     render,
     xml_safe,
 )
-from ..models import MeetingSegment, User
+from ..models import MeetingSegment
 from .meetings import own_meeting
 
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
@@ -37,10 +37,7 @@ def export_meeting(
 ) -> Response:
     # 不用 UserDep/DbDep：先把数据读成普通对象再关会话，几千句的 Word 要渲染一两秒，不该一直占着 SQLite 的读事务
     with ctx.Session() as db:
-        user = db.get(User, user_id)
-        if user is None:
-            raise HTTPException(401, "请先登录")
-        m = own_meeting(db, user, meeting_id)
+        m = own_meeting(db, user_id, meeting_id)
         rows = db.scalars(
             select(MeetingSegment).where(MeetingSegment.meeting_id == meeting_id).order_by(MeetingSegment.idx)
         ).all()

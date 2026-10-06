@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import JSON, ForeignKey, Index, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .db import Base, utcnow
 from .meeting.templates import DEFAULT_TEMPLATE
@@ -172,7 +172,7 @@ class MeetingLlmModel(Base):
 
 
 class MeetingLlmPreset(Base):
-    """整理方案：猜说话人、整理逐字稿、生成纪要、对话问答各用哪个模型、什么参数（结构见 meeting/llm_config.py）。"""
+    """整理方案：识别说话人、整理逐字稿、生成纪要、对话问答各用哪个模型、什么参数（结构见 meeting/llm_config.py）。"""
 
     __tablename__ = "meeting_llm_presets"
 
@@ -242,6 +242,32 @@ class Meeting(Base):
     started_at: Mapped[datetime | None] = mapped_column(default=None)
     finished_at: Mapped[datetime | None] = mapped_column(default=None)
     deleted_at: Mapped[datetime | None] = mapped_column(default=None)
+
+    @property
+    def minutes_stale(self) -> bool:
+        """纪要生成之后逐字稿又改过。"""
+        return bool(self.minutes_md) and self.minutes_rev is not None and self.minutes_rev != self.transcript_rev
+
+    def set_warning(self, key: str, text: str | None) -> None:
+        """按来源写警告（text 为空表示清掉这一条），同时更新给界面显示的 warning 文字。"""
+        warnings = {k: v for k, v in (self.warnings or {}).items() if v}
+        if text:
+            warnings[key] = text
+        else:
+            warnings.pop(key, None)
+        self.warnings = warnings
+        self.warning = join_warnings(warnings)
+
+
+def join_warnings(warnings: dict[str, str]) -> str | None:
+    """Meeting.warning 的取值：各来源的警告一条一行。批量 UPDATE 写 warnings 时也用它算 warning。"""
+    return "\n".join(warnings.values()) or None
+
+
+def live_meeting(db: Session, meeting_id: str) -> Meeting | None:
+    """取没被删除的会议；不存在或已删除都返回 None。"""
+    m = db.get(Meeting, meeting_id)
+    return None if m is None or m.deleted_at is not None else m
 
 
 class MeetingSegment(Base):

@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select, update
 
 from ..llm import LlmClient, LlmError
-from ..models import Meeting, MeetingSegment
+from ..models import Meeting, MeetingSegment, live_meeting
 from . import glossary, prompts
 from .llmcall import ask
 
@@ -280,8 +280,8 @@ def _final_state(previous: str, total: int, succeeded: int, has_segments: bool) 
 
 def _load(manager: MeetingManager, meeting_id: str) -> tuple[str, list[MeetingSegment], list[glossary.Term]] | None:
     with manager.Session() as db:
-        m = db.get(Meeting, meeting_id)
-        if m is None or m.deleted_at is not None:
+        m = live_meeting(db, meeting_id)
+        if m is None:
             return None
         state = m.transcript_state
         m.transcript_state = "polishing"

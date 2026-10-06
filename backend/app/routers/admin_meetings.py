@@ -29,7 +29,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(re
 
 
 def _kinds(ctx: AppContext) -> dict[str, type[AsrAdapter]]:
-    return {cls.kind: cls for cls in available_kinds(ctx.config.engine == "mock")}
+    return {cls.kind: cls for cls in available_kinds(ctx.dev_mode)}
 
 
 def _get(db: Session, provider_id: int) -> AsrProvider:

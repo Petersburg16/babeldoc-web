@@ -29,7 +29,7 @@ from sqlalchemy.orm import sessionmaker
 from ..config import Config
 from ..db import utcnow
 from ..events import EventBus
-from ..models import MEETING_ACTIVE, MEETING_FINISHED, AsrProvider, GlossaryTerm, Meeting, MeetingSegment
+from ..models import MEETING_ACTIVE, MEETING_FINISHED, AsrProvider, GlossaryTerm, Meeting, MeetingSegment, live_meeting
 from ..security import SecretBox
 from ..settings_store import load_settings
 from . import processing, split
@@ -154,7 +154,7 @@ class MeetingManager:
                         m.transcript_state = "partial"
                     if m.minutes_state == "generating":
                         m.minutes_state = "failed"
-                    set_warning(m, "restart", "服务重启打断了正在进行的处理，请重新操作")
+                    m.set_warning("restart", "服务重启打断了正在进行的处理，请重新操作")
                 if m.status == "done":
                     continue
                 if m.status == "transcoding":
@@ -280,8 +280,8 @@ class MeetingManager:
 
     def _status(self, meeting_id: str) -> str | None:
         with self.Session() as db:
-            m = db.get(Meeting, meeting_id)
-            if m is None or m.deleted_at is not None:
+            m = live_meeting(db, meeting_id)
+            if m is None:
                 return None
             self.owners[meeting_id] = m.user_id
             return m.status
@@ -470,7 +470,7 @@ class MeetingManager:
             m.status = "processing"
             m.stage = "speakers"
             m.progress = ASR_SPAN[1]
-            set_warning(m, "asr", "；".join(notes) if notes else None)
+            m.set_warning("asr", "；".join(notes) if notes else None)
             src = self.meeting_dir(m.id) / source_name(m.filename)
             db.commit()
         # 识别成功后原件和切段文件就用不到了（回听用转好的 audio.mp3），WAV 原件可能上 GB
@@ -609,8 +609,8 @@ class MeetingManager:
         self, meeting_id: str, merged: list[MergedSegment], hints: dict[str, dict[str, str]] | None = None
     ) -> None:
         with self.Session() as db:
-            m = db.get(Meeting, meeting_id)
-            if m is None or m.deleted_at is not None:
+            m = live_meeting(db, meeting_id)
+            if m is None:
                 return
             db.execute(delete(MeetingSegment).where(MeetingSegment.meeting_id == meeting_id))
             speakers: dict[str, Any] = {}
@@ -652,7 +652,7 @@ class MeetingManager:
             m.progress = 100
             m.finished_at = utcnow()
             for key, text in warnings.items():
-                set_warning(m, key, text)
+                m.set_warning(key, text)
             db.commit()
 
     def request_op(self, meeting_id: str, op: str, params: dict[str, Any]) -> None:
@@ -671,7 +671,7 @@ class MeetingManager:
             if m is not None:
                 # 重跑开始：清掉这一步和“被打断”“跳过了”这类旧提示，结束后按结果重新写
                 for key in (op, "restart", "pipeline"):
-                    set_warning(m, key, None)
+                    m.set_warning(key, None)
                 db.commit()
         try:
             assert self.llm_sem is not None
@@ -694,7 +694,7 @@ class MeetingManager:
                     m = db.get(Meeting, meeting_id)
                     if m is not None:
                         m.op = None
-                        set_warning(m, op, warning)
+                        m.set_warning(op, warning)
                         db.commit()
                 self.publish(meeting_id)
 
@@ -768,8 +768,8 @@ class MeetingManager:
 
     def publish(self, meeting_id: str) -> None:
         with self.Session() as db:
-            m = db.get(Meeting, meeting_id)
-            if m is None or m.deleted_at is not None:
+            m = live_meeting(db, meeting_id)
+            if m is None:
                 return
             self.owners[meeting_id] = m.user_id
             payload = self.meeting_out(m, load_settings(db).file_retention_days).model_dump(mode="json")
@@ -962,17 +962,6 @@ def _span(span: tuple[float, float], ratio: float) -> float:
 
 def _kind(kind: str) -> str:
     return {"network": "provider"}.get(kind, kind)
-
-
-def set_warning(m: Meeting, key: str, text: str | None) -> None:
-    """按来源写警告（text 为空表示清掉这一条），同时更新给界面显示的 warning 文字。"""
-    warnings = {k: v for k, v in (m.warnings or {}).items() if v}
-    if text:
-        warnings[key] = text
-    else:
-        warnings.pop(key, None)
-    m.warnings = warnings
-    m.warning = "\n".join(warnings.values()) or None
 
 
 def _clock(ms: int) -> str:

@@ -1,4 +1,4 @@
-"""上传文件的公共小工具：翻译任务和会议记录都用。"""
+"""上传文件和用户填写的名称的公共小工具：翻译任务和会议记录都用。"""
 
 from __future__ import annotations
 
@@ -10,12 +10,18 @@ from fastapi import HTTPException
 
 MAX_FILES_PER_UPLOAD = 10  # 翻译一次最多上传几个文件
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+_LINE_CONTROL = re.compile(r"[\x00-\x1f\x7f￾￿]")
 
 
 def clean_filename(raw: str | None) -> str:
     name = (raw or "").replace("\\", "/").split("/")[-1]
     name = _CONTROL.sub("", name).strip()
     return name[:200] or "document.pdf"
+
+
+def clean_line(text: str) -> str:
+    """会议标题、说话人名这类单行文字：控制字符换成空格，连续空白合成一个，去掉首尾空白。"""
+    return " ".join(_LINE_CONTROL.sub(" ", text).split())
 
 
 def copy_limited(src: IO[bytes], dst: Path, limit: int, name: str) -> int:

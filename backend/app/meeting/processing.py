@@ -1,4 +1,4 @@
-"""识别完成后的大模型处理：猜说话人名字、分块整理逐字稿、生成纪要，以及完成后的单项重跑。
+"""识别完成后的大模型处理：识别说话人、分块整理逐字稿、生成纪要，以及完成后的单项重跑。
 
 约定：这里的函数自己处理大模型错误，返回给用户看的警告文字（没有就 None），不向外抛异常；
 只有任务被取消时让 CancelledError 传出去。识别结果已经可用，大模型哪一步失败都不影响会议完成。
@@ -13,18 +13,16 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import update
 
 from ..llm import LlmClient, LlmError
-from ..models import Meeting
+from ..models import Meeting, live_meeting
 from . import minutes, polish, speakers
-from .llm_config import resolve_meeting_llm
+from .llm_config import STEP_LABELS, resolve_meeting_llm
 
 if TYPE_CHECKING:
     from .manager import MeetingManager
 
 log = logging.getLogger("bdw.meetings.processing")
 
-OPS = ("speakers", "polish", "minutes")
-# 成员端看到的步骤名（管理后台的叫法见 llm_config.STEP_LABELS）
-OP_LABELS = {"speakers": "识别说话人", "polish": "整理逐字稿", "minutes": "生成纪要"}
+OPS = ("speakers", "polish", "minutes")  # 步骤名见 llm_config.STEP_LABELS
 # 进度区间（0–1，由 manager.set_progress 映射到整体进度的 60–100）
 SPEAKERS_SPAN = (0.0, 0.1)
 POLISH_SPAN = (0.1, 0.7)
@@ -34,8 +32,8 @@ MINUTES_SPAN = (0.7, 1.0)
 def _client(manager: MeetingManager, meeting_id: str, step: str) -> tuple[LlmClient | None, str | None]:
     """按会议的整理方案取这个用途的客户端；返回 (客户端, None) 或 (None, 原因)。会议已删除时返回 (None, None)。"""
     with manager.Session() as db:
-        m = db.get(Meeting, meeting_id)
-        if m is None or m.deleted_at is not None:
+        m = live_meeting(db, meeting_id)
+        if m is None:
             return None, None
         cfg, reason = resolve_meeting_llm(db, manager.secrets, m.llm_preset_id, step)
     if cfg is None:
@@ -67,7 +65,7 @@ async def run_pipeline_steps(manager: MeetingManager, meeting_id: str) -> dict[s
     skipped: list[str] = []
     unavailable: dict[str, str] = {}
     for step, span in steps:
-        label = OP_LABELS[step]
+        label = STEP_LABELS[step]
         client, reason = _client(manager, meeting_id, step)
         if client is None:
             if reason is None:  # 会议已删除
@@ -105,7 +103,7 @@ async def run_op(manager: MeetingManager, meeting_id: str, op: str, params: dict
         client, reason = _client(manager, meeting_id, op)
         if client is None:
             return f"无法处理：{reason}" if reason else None
-        label = OP_LABELS[op]
+        label = STEP_LABELS[op]
         manager.set_progress(meeting_id, 0.0, op)
         warning, _ = await _step(manager, meeting_id, client, op, (0.0, 1.0), label, params)
         return warning

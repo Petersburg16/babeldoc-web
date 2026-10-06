@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse
 from ..db import utcnow
 from ..deps import CtxDep, client_ip
 from ..meeting.manager import PROBE_ID, parse_iso
-from ..models import Meeting
+from ..models import live_meeting
 
 router = APIRouter(tags=["public"])
 log = logging.getLogger("bdw.public")
@@ -42,8 +42,8 @@ def meeting_audio(meeting_id: str, index: int, token: str, request: Request, ctx
         probe.hits.append(ip)
         return FileResponse(probe.path, media_type="audio/mpeg", headers=NO_STORE)
     with ctx.Session() as db:
-        m = db.get(Meeting, meeting_id)
-        if m is None or m.deleted_at is not None or m.status != "transcribing":
+        m = live_meeting(db, meeting_id)
+        if m is None or m.status != "transcribing":
             raise HTTPException(404, "Not Found")
         part = next((p for p in m.asr_parts or [] if int(p.get("index", -1)) == index), None)
     if part is None or not part.get("token") or not secrets.compare_digest(str(part["token"]), token):

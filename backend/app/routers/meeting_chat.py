@@ -26,7 +26,7 @@ from ..meeting import chat
 from ..meeting.llm_config import resolve_meeting_llm
 from ..meeting.llmcall import increment_meeting_tokens
 from ..meeting.schemas import MessageOut
-from ..models import Meeting, MeetingMessage, MeetingSegment
+from ..models import MeetingMessage, MeetingSegment, live_meeting
 from ..settings_store import load_settings
 from .meetings import own_meeting
 
@@ -61,7 +61,7 @@ class Prepared:
 
 @router.get("/{meeting_id}/messages")
 def list_messages(meeting_id: str, user: UserDep, db: DbDep) -> list[MessageOut]:
-    own_meeting(db, user, meeting_id)
+    own_meeting(db, user.id, meeting_id)
     rows = db.scalars(
         select(MeetingMessage).where(MeetingMessage.meeting_id == meeting_id).order_by(MeetingMessage.id)
     ).all()
@@ -70,7 +70,7 @@ def list_messages(meeting_id: str, user: UserDep, db: DbDep) -> list[MessageOut]
 
 @router.delete("/{meeting_id}/messages", status_code=204)
 def clear_messages(meeting_id: str, user: UserDep, db: DbDep) -> None:
-    own_meeting(db, user, meeting_id)
+    own_meeting(db, user.id, meeting_id)
     db.execute(delete(MeetingMessage).where(MeetingMessage.meeting_id == meeting_id))
     db.commit()
 
@@ -97,9 +97,7 @@ async def chat_stream(
 
 def prepare(ctx: AppContext, user_id: int, meeting_id: str, question: str) -> Prepared:
     with ctx.Session() as db:
-        m = db.get(Meeting, meeting_id)
-        if m is None or m.deleted_at is not None or m.user_id != user_id:
-            raise HTTPException(404, "会议不存在")
+        m = own_meeting(db, user_id, meeting_id)
         rows = db.execute(
             select(MeetingSegment.start_ms, MeetingSegment.speaker, MeetingSegment.text)
             .where(MeetingSegment.meeting_id == meeting_id)
@@ -123,7 +121,7 @@ def prepare(ctx: AppContext, user_id: int, meeting_id: str, question: str) -> Pr
             "duration_ms": m.duration_ms or 0,
             "speakers": dict(m.speakers or {}),
             "minutes_md": m.minutes_md,
-            "minutes_stale": bool(m.minutes_md) and m.minutes_rev is not None and m.minutes_rev != m.transcript_rev,
+            "minutes_stale": m.minutes_stale,
         }
         message = MeetingMessage(meeting_id=meeting_id, role="user", content=question)
         db.add(message)
@@ -137,8 +135,7 @@ def prepare(ctx: AppContext, user_id: int, meeting_id: str, question: str) -> Pr
 def save_answer(ctx: AppContext, meeting_id: str, user_message_id: int, answer: str, tokens: int) -> MessageOut | None:
     """存回答并累加用量。会议被删或对话在回答期间被清空时不存，返回 None。"""
     with ctx.Session() as db:
-        m = db.get(Meeting, meeting_id)
-        if m is None or m.deleted_at is not None or db.get(MeetingMessage, user_message_id) is None:
+        if live_meeting(db, meeting_id) is None or db.get(MeetingMessage, user_message_id) is None:
             return None
         message = MeetingMessage(meeting_id=meeting_id, role="assistant", content=answer, tokens=tokens)
         db.add(message)
