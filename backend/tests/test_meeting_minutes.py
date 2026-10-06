@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import time
+import threading
 from functools import partial
 from types import SimpleNamespace
 
@@ -358,18 +358,22 @@ def test_cancel_restores_state(app, admin_client):
     mid = make_meeting(app, [(0, 5_000, "S1", "开始开会。")], duration_ms=MIN)
     manager = app.state.ctx.meetings
 
+    waiting = threading.Event()
+
     class SlowClient:
         cfg = SimpleNamespace(context_chars=None)
 
         async def chat(self, messages, **kwargs):
+            waiting.set()
             await asyncio.sleep(30)
 
         async def collect(self, messages, **kwargs):
+            waiting.set()
             await asyncio.sleep(30)
 
     future = admin_client.portal.start_task_soon(partial(generate_minutes, manager, mid, SlowClient()))
-    wait_until(lambda: load(app, mid).minutes_state == "generating", timeout=5, interval=0.02)
-    time.sleep(0.1)  # 让它走到等大模型回复那一步
+    assert waiting.wait(5), "应该已经走到等大模型回复那一步"
+    assert load(app, mid).minutes_state == "generating"
     assert future.cancel()
     message = "取消后不能一直停在“生成中”"
     state = wait_until(

@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import threading
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.db import utcnow
 from app.main import create_app
+from app.meeting import manager as manager_module
+from app.meeting.asr.base import PollResult
+from app.meeting.asr.mock import MockAdapter
+from app.meeting.media import AUDIO_NAME
 from app.models import Meeting, MeetingSegment
 from tests.conftest import (
     ADMIN,
@@ -34,6 +40,21 @@ def _llm_unavailable(app):
         raise FakeLlmFailure(401, "fake: no llm in flow tests")
 
     install_fake_llm(app, reply)
+
+
+@pytest.fixture
+def hold_asr(monkeypatch) -> threading.Event:
+    """模拟识别服务在 set() 之前一直回“还在识别”：要在识别中做点什么的测试用它，不靠真实时间留窗口。"""
+    release = threading.Event()
+    real_poll = MockAdapter.poll
+
+    async def poll(self, task_id: str) -> PollResult:
+        if not release.is_set():
+            return PollResult("pending")
+        return await real_poll(self, task_id)
+
+    monkeypatch.setattr(MockAdapter, "poll", poll)
+    return release
 
 
 def _wait_part(app, mid: str, status: str | None = None) -> dict:
@@ -127,8 +148,8 @@ def test_create_validates_input(admin_client):
     assert options["templates"][0]["id"] == "group_topic"
 
 
-def test_public_audio_token(app, admin_client):
-    add_mock_provider(admin_client, delay_seconds="3")
+def test_public_audio_token(app, admin_client, hold_asr):
+    add_mock_provider(admin_client)
     meeting = upload_audio(admin_client, make_wav(5))
     mid = meeting["id"]
     part = _wait_part(app, mid, status="transcribing")
@@ -144,6 +165,7 @@ def test_public_audio_token(app, admin_client):
     assert ranged.status_code == 206 and ranged.content == full.content[10:20]
     assert anon.get(f"/api/public/meeting-audio/{mid}/0/{'x' * 43}.mp3").status_code == 404
     assert anon.get(f"/api/public/meeting-audio/{mid}/1/{part['token']}.mp3").status_code == 404
+    hold_asr.set()
     wait_meeting(admin_client, mid, {"done"})
     assert anon.get(url).status_code == 404, "识别完成后令牌作废"
 
@@ -183,15 +205,16 @@ def test_cancel_and_delete(app, admin_client):
     wait_until(lambda: not directory.exists(), timeout=5, message="会议目录没有删掉")
 
 
-def test_resume_polling_after_restart(tmp_path, monkeypatch):
+def test_resume_polling_after_restart(tmp_path, monkeypatch, hold_asr):
     config = build_config(tmp_path, monkeypatch)
     app1 = create_app(config)
     with TestClient(app1, headers={"X-Requested-With": "pytest"}) as c1:
         add_user(app1, *ADMIN, role="admin")
         login(c1, *ADMIN)
-        add_mock_provider(c1, delay_seconds="4")
+        add_mock_provider(c1)
         mid = upload_audio(c1, make_wav(4))["id"]
         task_id = _wait_part(app1, mid)["task_id"]
+    hold_asr.set()  # 第一个应用已停下，识别在服务商那边“完成”了
     app2 = create_app(config)
     with TestClient(app2, headers={"X-Requested-With": "pytest"}) as c2:
         login(c2, *ADMIN)
@@ -233,14 +256,14 @@ def test_stale_upload_is_cleaned(app, admin_client):
     assert not app.state.ctx.meetings.meeting_dir(mid).exists()
 
 
-def test_retry_after_cancel_resumes_same_task(app, admin_client):
+def test_retry_after_cancel_resumes_same_task(app, admin_client, hold_asr):
     """识别中取消、再重试：服务商的任务还在，应接着查同一个任务号，不重新提交（避免重复计费）。"""
-    provider_id = add_mock_provider(admin_client, delay_seconds="3")
+    add_mock_provider(admin_client)
     mid = upload_audio(admin_client, make_wav(5))["id"]
     task_id = _wait_part(app, mid)["task_id"]
     assert admin_client.post(f"/api/meetings/{mid}/cancel").status_code == 200
     wait_meeting(admin_client, mid, {"canceled"})
-    admin_client.patch(f"/api/admin/asr/providers/{provider_id}", json={"config": {"delay_seconds": "0.3"}})
+    hold_asr.set()
     assert admin_client.post(f"/api/meetings/{mid}/retry").status_code == 200
     done = wait_meeting(admin_client, mid, {"done", "failed"})
     assert done["status"] == "done", done["error"]
@@ -286,15 +309,11 @@ def test_interrupted_submit_is_not_resubmitted_automatically(tmp_path, monkeypat
 def test_duration_limit_checked_after_transcode(app, admin_client):
     add_mock_provider(admin_client)
     update_settings(admin_client, max_audio_hours=1)
-    from app.meeting import manager as manager_module
-
     original = manager_module.probe
-    calls = {"n": 0}
 
     def fake_probe(ffprobe, path, timeout=120):
         info = original(ffprobe, path, timeout)
-        calls["n"] += 1
-        if calls["n"] == 2:  # 转码后的那次：报一个超长的真实时长
+        if Path(path).name == AUDIO_NAME:  # 转码后的那次：报一个超长的真实时长
             info.duration_ms = 2 * 3600 * 1000
         return info
 
