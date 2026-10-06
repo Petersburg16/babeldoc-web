@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from app.meeting import split
-from app.meeting.align import align_parts, merge_parts, normalize_single
+from app.meeting.align import Alignment, align_parts, normalize_single
 from app.meeting.asr.base import AsrSegment
 from app.meeting.media import detect_silences, probe, transcode_args
 from tests.conftest import build_config
@@ -96,13 +96,14 @@ def assert_consistent(out, truth: Truth, people: tuple[str, ...]) -> None:
 
 
 def test_empty_and_single_part_unchanged():
-    assert merge_parts([]) == ([], [])
+    assert align_parts([]) == Alignment([], [])
     segments = [
         AsrSegment(5000, 9000, "b", "后来的话"),
         AsrSegment(1000, 4000, "a", " 先说的话 "),
         AsrSegment(1, 2, "c", " "),
     ]
-    out, notes = merge_parts([(60_000, 120_000, segments)])
+    result = align_parts([(60_000, 120_000, segments)])
+    out, notes = result.segments, result.notes
     assert out == normalize_single(segments, 60_000)
     assert [(s.start_ms, s.speaker, s.text) for s in out] == [(61_000, "S1", "先说的话"), (65_000, "S2", "后来的话")]
     assert notes == []
@@ -129,7 +130,8 @@ def test_swapped_labels_between_two_parts():
     parts = make_parts(
         truth, spans, label=lambda p, who, _i: ({"张": "A", "李": "B"} if p == 0 else {"张": "B", "李": "A"})[who]
     )
-    out, notes = merge_parts(parts)
+    result = align_parts(parts)
+    out, notes = result.segments, result.notes
     assert_complete(out, truth)
     assert_consistent(out, truth, ("张", "李"))
     assert len(notes) == 1
@@ -201,7 +203,7 @@ def test_abutting_sentences_with_shifted_boundaries():
     # 句句相接没有空隙，后一段的句子边界整体晚 150 ms：只能在句子边界上切，仍然不丢不重
     truth = build_truth(rotate("张", "李", "王"), 255_000, gap=False)
     parts = make_parts(truth, [(0, 160_000), (100_000, 260_000)], shift=lambda p: 150 * p)
-    out, _ = merge_parts(parts)
+    out = align_parts(parts).segments
     assert_complete(out, truth, check_times=False)
     assert_consistent(out, truth, ("张", "李", "王"))
 

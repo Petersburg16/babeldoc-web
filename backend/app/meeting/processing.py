@@ -52,17 +52,10 @@ def _reporter(
     return report
 
 
-def _join(warnings: list[str]) -> str | None:
-    return "；".join(w for w in warnings if w) or None
-
-
-async def run_pipeline(manager: MeetingManager, meeting_id: str) -> str | None:
-    """识别刚完成时跑一遍：说话人识别 → 整理 → 纪要。"""
-    return _join(list((await run_pipeline_steps(manager, meeting_id)).values()))
-
-
 async def run_pipeline_steps(manager: MeetingManager, meeting_id: str) -> dict[str, str | None]:
-    """同 run_pipeline，但按步骤返回警告（键为 speakers / polish / minutes / pipeline），便于以后单独清除。
+    """识别刚完成时跑一遍：说话人识别 → 整理 → 纪要。
+
+    按步骤返回警告（键为 speakers / polish / minutes / pipeline），manager._process 按键写进 Meeting.warnings。
 
     每个步骤按整理方案用各自的模型；某个模型报“致命”错误（密钥无效、模型不存在、连不上）后，
     只跳过后面用同一个模型的步骤，用别的模型的步骤照常进行。

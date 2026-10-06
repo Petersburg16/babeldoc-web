@@ -600,8 +600,6 @@ def test_pipeline_without_model(env, monkeypatch):
     assert warnings["pipeline"].startswith("逐字稿未整理：") and "方案" in warnings["pipeline"]
     assert not minutes_calls and not requests
     assert meeting(app, mid).transcript_state == "raw"
-    warning = manager.run(lambda: processing.run_pipeline(manager, mid))
-    assert warning == warnings["pipeline"]
 
 
 def test_pipeline_runs_all_steps(env, monkeypatch):
@@ -612,8 +610,8 @@ def test_pipeline_runs_all_steps(env, monkeypatch):
     stub_minutes(monkeypatch, minutes_calls, warning="纪要里有 1 个时间戳超出会议时长，已去掉")
     install_fake_llm(app, standard_reply)
     manager = FakeManager(app, app.state.ctx.meetings.transport)
-    warning = manager.run(lambda: processing.run_pipeline(manager, mid))
-    assert warning == "纪要里有 1 个时间戳超出会议时长，已去掉"
+    warnings = manager.run(lambda: processing.run_pipeline_steps(manager, mid))
+    assert warnings == {"speakers": None, "polish": None, "minutes": "纪要里有 1 个时间戳超出会议时长，已去掉"}
     assert minutes_calls == [{"meeting_id": mid, "template": None, "extra": None}]
     stages = [stage for _, stage in manager.progress]
     assert stages.index("speakers") < stages.index("polish") < stages.index("minutes")
@@ -635,9 +633,10 @@ def test_pipeline_fatal_error_skips_rest(env, monkeypatch):
 
     calls = install_fake_llm(app, unauthorized)
     manager = FakeManager(app, app.state.ctx.meetings.transport)
-    warning = manager.run(lambda: processing.run_pipeline(manager, mid))
+    warnings = manager.run(lambda: processing.run_pipeline_steps(manager, mid))
     assert len(calls) == 1 and not minutes_calls
-    assert "识别说话人失败" in warning and "跳过了整理逐字稿、生成纪要" in warning
+    assert list(warnings) == ["speakers", "pipeline"], "跳过的步骤不单独写警告"
+    assert "识别说话人失败" in warnings["speakers"] and "跳过了整理逐字稿、生成纪要" in warnings["pipeline"]
     assert meeting(app, mid).transcript_state == "raw"
 
 
@@ -689,8 +688,8 @@ def test_pipeline_survives_crash_in_a_step(env, monkeypatch):
     monkeypatch.setattr(processing.minutes, "generate_minutes", crash)
     install_fake_llm(app, standard_reply)
     manager = FakeManager(app, app.state.ctx.meetings.transport)
-    warning = manager.run(lambda: processing.run_pipeline(manager, mid))
-    assert warning == "生成纪要时出错：RuntimeError: boom"
+    warnings = manager.run(lambda: processing.run_pipeline_steps(manager, mid))
+    assert warnings == {"speakers": None, "polish": None, "minutes": "生成纪要时出错：RuntimeError: boom"}
     assert meeting(app, mid).transcript_state == "polished"
 
 

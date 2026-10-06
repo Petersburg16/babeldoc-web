@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -51,9 +51,6 @@ class Config:
     @property
     def meetings_dir(self) -> Path:
         return self.data_dir / "meetings"
-
-    def with_overrides(self, **kwargs) -> Config:
-        return replace(self, **kwargs)
 
 
 def load_config() -> Config:

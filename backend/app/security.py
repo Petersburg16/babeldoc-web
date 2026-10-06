@@ -16,7 +16,6 @@ from cryptography.fernet import Fernet, InvalidToken
 _hasher = PasswordHasher()
 
 SESSION_COOKIE = "bdw_session"
-CSRF_HEADER = "x-requested-with"
 _FRIENDLY = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 _PASSWORD_CHARS = string.ascii_letters + string.digits
 

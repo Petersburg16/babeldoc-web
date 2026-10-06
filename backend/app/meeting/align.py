@@ -60,14 +60,11 @@ def normalize_single(segments: list[AsrSegment], offset_ms: int = 0) -> list[Mer
     return out
 
 
-def merge_parts(parts: list[tuple[int, int, list[AsrSegment]]]) -> tuple[list[MergedSegment], list[str]]:
-    """parts: [(offset_ms, duration_ms, 该段识别结果)]，按 offset 排好。返回合并结果和给用户看的提示。"""
-    result = align_parts(parts)
-    return result.segments, result.notes
-
-
 def align_parts(parts: list[tuple[int, int, list[AsrSegment]]]) -> Alignment:
-    """merge_parts 的完整版，另外返回结构化的“可能是同一人”提示。"""
+    """parts: [(offset_ms, duration_ms, 该段识别结果)]，顺序不限（按 offset 排序）。
+
+    返回合并结果、给用户看的提示和结构化的“可能是同一人”提示。
+    """
     ordered = sorted(parts, key=lambda p: p[0])
     if not ordered:
         return Alignment([], [])

@@ -1,4 +1,4 @@
-"""超长录音切段：在静音处切，相邻段重叠几分钟，供说话人对齐使用（见 align.merge_parts）。
+"""超长录音切段：在静音处切，相邻段重叠几分钟，供说话人对齐使用（见 align.align_parts）。
 
 段长按“剩余时长平均分”定，每段不超过单次上限的约 90%；段尾和下一段的段首都尽量落在静音中点，
 避免把一个字切成两半。整段只解码一次找静音，再用 -c copy 截出各段（不重新编码，几秒一段）。
@@ -13,8 +13,6 @@ from typing import Any
 
 from ..config import Config
 from .media import MediaError, cut_args, detect_silences
-
-SUPPORTED = True
 
 OVERLAP_MS = 240_000  # 相邻段重叠 4 分钟：对齐说话人要靠重叠区里足够多的发言
 FILL = 0.9  # 每段目标长度占单次上限的比例，留余量
@@ -117,9 +115,6 @@ def _pick_cut(silences: list[tuple[int, int]], lo: int, hi: int, target: int) ->
 
 def _cut(ffmpeg: str, src: Path, dst: Path, start_ms: int, duration_ms: int) -> None:
     args = cut_args(ffmpeg, src, dst, start_ms, duration_ms)
-    # 不写 Xing/LAME 头：截到文件末尾时 ffmpeg 会把原文件的尾部填充写进新头，解码时开头被多裁掉约 0.25 秒，
-    # 段内时间整体错位（实测 ffmpeg 8.1）。恒定码率的 mp3 没有这个头也能正常解码和计算时长。
-    args[-1:-1] = ["-write_xing", "0"]
     try:
         out = subprocess.run(
             args,

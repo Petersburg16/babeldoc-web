@@ -306,7 +306,6 @@ class MeetingManager:
             m.started_at = m.started_at or utcnow()
             settings = load_settings(db)
             provider_kind = m.provider_kind
-            provider_name = m.provider_name
             db.commit()
         self.publish(meeting_id)
         if not src.is_file():
@@ -362,7 +361,7 @@ class MeetingManager:
             with contextlib.suppress(OSError):
                 audio.unlink()
             raise StageError(f"录音时长 {_clock(duration)} 超过了上限 {settings.max_audio_hours} 小时", "input")
-        parts = await self._plan_parts(meeting_id, audio, duration, provider_kind, provider_name)
+        parts = await self._plan_parts(meeting_id, audio, duration, provider_kind)
         self._update(
             meeting_id,
             duration_ms=duration,
@@ -373,7 +372,7 @@ class MeetingManager:
         )
 
     async def _plan_parts(
-        self, meeting_id: str, audio: Path, duration_ms: int, provider_kind: str, provider_name: str
+        self, meeting_id: str, audio: Path, duration_ms: int, provider_kind: str
     ) -> list[dict[str, Any]]:
         cls = adapter_class(provider_kind)
         if cls is None:
@@ -382,12 +381,6 @@ class MeetingManager:
         size = audio.stat().st_size
         if duration_ms <= cap.max_part_seconds * 1000 and size <= cap.max_bytes:
             return [_new_part(0, 0, duration_ms, AUDIO_NAME)]
-        if not split.SUPPORTED:
-            raise StageError(
-                f"录音时长 {_clock(duration_ms)} 超过「{provider_name}」单次能处理的"
-                f" {_clock(cap.max_part_seconds * 1000)}，暂不支持自动切段，请改用其他识别服务",
-                "input",
-            )
         self._progress(meeting_id, TRANSCODE_SPAN[1], "split")
         try:
             planned = await asyncio.to_thread(
@@ -736,14 +729,6 @@ class MeetingManager:
             if m is None:
                 return
             m.asr_parts = [({**p, **values} if int(p.get("index", -1)) == index else p) for p in m.asr_parts or []]
-            db.commit()
-
-    def _invalidate_tokens(self, meeting_id: str) -> None:
-        with self.Session() as db:
-            m = db.get(Meeting, meeting_id)
-            if m is None or not m.asr_parts:
-                return
-            m.asr_parts = [{**p, "token": None, "token_exp": None} for p in m.asr_parts]
             db.commit()
 
     def _progress(self, meeting_id: str, value: float, stage: str) -> None:

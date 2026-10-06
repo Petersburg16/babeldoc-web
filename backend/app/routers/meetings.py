@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session
 
 from ..db import utcnow
 from ..deps import AppContext, CtxDep, DbDep, UserDep
-from ..meeting import split
 from ..meeting.asr import available_kinds
 from ..meeting.llm_config import find_preset
 from ..meeting.manager import source_name
@@ -127,7 +126,7 @@ def options(user: UserDep, db: DbDep, ctx: CtxDep) -> MeetingOptionsOut:
         max_audio_upload_mb=settings.max_audio_upload_mb,
         max_audio_hours=settings.max_audio_hours,
         retention_days=settings.file_retention_days,
-        split_supported=split.SUPPORTED,
+        split_supported=True,  # 超长录音一律自动切段；字段保留给前端
         presets=[
             PresetPublicOut(id=p.id, name=p.name, description=p.description, is_default=p.is_default)
             for p in db.scalars(

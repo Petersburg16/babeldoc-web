@@ -153,7 +153,8 @@ def cut_args(ffmpeg: str, src: Path, dst: Path, start_ms: int, duration_ms: int)
     return [
         ffmpeg, "-hide_banner", "-nostdin", "-y",
         "-ss", f"{start_ms / 1000:.3f}", "-i", str(src), "-t", f"{duration_ms / 1000:.3f}",
-        # -write_xing 0：复制到原文件末尾时 ffmpeg 会把原文件尾部的填充写进新文件的 Xing 头，解码时开头多裁约 0.25 秒
+        # -write_xing 0：复制到原文件末尾时 ffmpeg 会把原文件尾部的填充写进新文件的 Xing 头，解码时开头多裁约 0.25 秒，
+        # 段内时间整体错位（实测 ffmpeg 8.1）。恒定码率的 mp3 没有这个头也能正常解码和计算时长
         "-c", "copy", "-write_xing", "0", "-progress", "pipe:1", "-nostats", str(dst),
     ]  # fmt: skip
 
