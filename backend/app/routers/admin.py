@@ -487,12 +487,12 @@ def test_model(model_id: int, db: DbDep, ctx: CtxDep) -> ModelTestOut:
 
 
 @router.post("/models/probe")
-def probe_models(body: ModelProbeIn, db: DbDep, ctx: CtxDep) -> dict[str, list[str]]:
+async def probe_models(body: ModelProbeIn, db: DbDep, ctx: CtxDep) -> dict[str, list[str]]:
     api_key = body.api_key.strip()
     if not api_key and body.model_id:
         api_key = ctx.secrets.decrypt(_get_model(db, body.model_id).api_key_enc)
     try:
-        return {"models": list_remote_models(body.base_url, api_key)}
+        return {"models": await list_remote_models(body.base_url, api_key)}
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
 

@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator, model_v
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..llm import DEFAULT_BASE_URL, LlmConfig
+from ..llm import RESERVED, LlmConfig
 from ..models import MeetingLlmModel, MeetingLlmPreset
 from ..security import SecretBox
 
@@ -63,7 +63,6 @@ EFFORT_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 # 这些模型的输出上限字段是 max_completion_tokens（思考 token 也算在里面）
 _COMPLETION_TOKENS = re.compile(r"^(?:gpt-5|gpt-6|o\d)")
-RESERVED_PARAMS = frozenset({"model", "messages", "stream", "stream_options"})
 _PARAM_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,63}$")
 
 
@@ -88,6 +87,14 @@ def normalize_levels(levels: list[str]) -> list[str]:
     """只留认识的档位，去重并按从低到高排好。"""
     wanted = {str(x).strip().lower() for x in levels}
     return [e for e in EFFORT_ORDER if e in wanted]
+
+
+def normalize_effort(v: str) -> str:
+    """方案和测试里选的思考强度：转小写，只认“默认”和 EFFORT_ORDER 里的档位，不认识的抛 ValueError。"""
+    v = (v or "default").strip().lower()
+    if v != "default" and v not in EFFORT_ORDER:
+        raise ValueError(f"未知的思考强度：{v}")
+    return v
 
 
 def effective_effort(selected: str, ladder: list[str]) -> str | None:
@@ -139,7 +146,7 @@ class CustomParam(BaseModel):
         v = v.strip()
         if not _PARAM_NAME.match(v):
             raise ValueError(f"参数名“{v}”只能用字母、数字、下划线、点和连字符，且以字母或下划线开头")
-        if v in RESERVED_PARAMS:
+        if v in RESERVED:
             raise ValueError(f"“{v}”由本站自己填写，不能作为自定义参数")
         return v
 
@@ -183,10 +190,7 @@ class StepConfig(BaseModel):
     @field_validator("effort")
     @classmethod
     def _effort(cls, v: str) -> str:
-        v = (v or "default").strip().lower()
-        if v != "default" and v not in EFFORT_ORDER:
-            raise ValueError(f"未知的思考强度：{v}")
-        return v
+        return normalize_effort(v)
 
     @model_validator(mode="after")
     def _ranges(self) -> StepConfig:
@@ -241,14 +245,19 @@ def load_steps(raw: Any) -> PresetSteps:
     return PresetSteps(**out)
 
 
+def step_model(db: Session, steps: PresetSteps, step: str) -> tuple[StepConfig, MeetingLlmModel | None]:
+    """方案里这个用途的配置和它选的模型（没选或已删除时为 None）。启用与否、档位由各调用方按场景自己检查。"""
+    sc: StepConfig = getattr(steps, step)
+    return sc, db.get(MeetingLlmModel, sc.model_id) if sc.model_id is not None else None
+
+
 def check_steps(db: Session, steps: PresetSteps) -> None:
     """保存方案前的跨表校验：模型存在，思考强度在该模型的档位表里。出错抛 ValueError。"""
     for step in STEPS:
-        sc: StepConfig = getattr(steps, step)
+        sc, model = step_model(db, steps, step)
         label = STEP_LABELS[step]
         if sc.model_id is None:
             raise ValueError(f"请给“{label}”选一个模型")
-        model = db.get(MeetingLlmModel, sc.model_id)
         if model is None:
             raise ValueError(f"“{label}”选的模型不存在")
         ladder = normalize_levels(model.effort_levels or [])
@@ -272,7 +281,7 @@ def build_config(model: MeetingLlmModel, box: SecretBox, sc: StepConfig, *, step
     ladder = normalize_levels(model.effort_levels or [])
     return LlmConfig(
         model_id=model.id,
-        base_url=(model.base_url or DEFAULT_BASE_URL).rstrip("/"),
+        base_url=model.base_url,  # 留空、末尾斜杠由 LlmClient 拼地址时处理
         api_key=box.decrypt(model.api_key_enc),
         model=model.model,
         json_mode=model.json_mode,
@@ -299,8 +308,7 @@ def resolve_meeting_llm(
     label = STEP_LABELS.get(step, step)
     if preset is None:
         return None, "管理员还没有配置会议记录用的大模型方案"
-    sc: StepConfig = getattr(load_steps(preset.steps), step)
-    model = db.get(MeetingLlmModel, sc.model_id) if sc.model_id is not None else None
+    sc, model = step_model(db, load_steps(preset.steps), step)
     if model is None:
         return None, f"整理方案“{preset.name}”没有给“{label}”配置可用的模型"
     if not model.enabled:

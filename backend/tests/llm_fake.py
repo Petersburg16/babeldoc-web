@@ -79,6 +79,15 @@ def _sse_with_usage(reply: FakeReply, payload: dict[str, Any]) -> bytes:
     return ("\n\n".join(lines) + "\n\n").encode("utf-8")
 
 
+def install_transport(app, handler: Callable[[httpx.Request], httpx.Response]) -> None:
+    """把会议管理器发请求用的传输层换成 handler；要看请求头、模拟 /models 等接口时直接用这个。"""
+    transport = httpx.MockTransport(handler)
+    manager = app.state.ctx.meetings
+    manager.transport = transport
+    if manager.http is not None:  # 应用已经启动：换掉正在用的客户端
+        manager.http = httpx.AsyncClient(transport=transport)
+
+
 def install_fake_llm(app, reply: Reply) -> list[dict[str, Any]]:
     calls: list[dict[str, Any]] = []
 
@@ -109,9 +118,5 @@ def install_fake_llm(app, reply: Reply) -> list[dict[str, Any]]:
             },
         )
 
-    transport = httpx.MockTransport(handler)
-    manager = app.state.ctx.meetings
-    manager.transport = transport
-    if manager.http is not None:  # 应用已经启动：换掉正在用的客户端
-        manager.http = httpx.AsyncClient(transport=transport)
+    install_transport(app, handler)
     return calls

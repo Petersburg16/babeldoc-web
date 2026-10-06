@@ -420,6 +420,60 @@ def test_stream_retries_connect_errors(no_sleep):
     assert run_with(busy_then_ok, collect_stream) == "好" and len(requests) == 2, "开始输出前的 5xx 可以重试"
 
 
+@pytest.mark.parametrize("error", [httpx.ReadError, httpx.RemoteProtocolError, httpx.ConnectError])
+def test_stream_never_retries_after_output_started(no_sleep, error):
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+
+        async def body():
+            yield sse(delta("第一段"), done=False)
+            raise error("connection lost")
+
+        return httpx.Response(200, content=body(), headers={"content-type": "text/event-stream"})
+
+    got: list[str] = []
+
+    async def consume(client: LlmClient) -> None:
+        async for part in client.stream(MESSAGES):
+            got.append(part)
+
+    with pytest.raises(LlmError) as info:
+        run_with(handler, consume)
+    assert got == ["第一段"] and len(requests) == 1 and not no_sleep, "已经出字：对方在计费，断了也不重发"
+    assert "连接中断" in str(info.value) and not info.value.retryable
+
+
+@pytest.mark.parametrize("status, delays", [(429, [6, 12]), (503, [2, 4])])
+@pytest.mark.parametrize("call", ["chat", "stream"])
+def test_busy_backoff_same_for_chat_and_stream(no_sleep, call, status, delays):
+    requests: list[httpx.Request] = []
+    whole = {"choices": [{"message": {"content": "好"}, "finish_reason": "stop"}]}
+
+    def busy_twice(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if len(requests) < 3:
+            return httpx.Response(status, json={"error": {"message": "slow down"}})
+        return httpx.Response(200, json=whole)
+
+    run = collect_stream if call == "stream" else (lambda client: client.chat(MESSAGES))
+    run_with(busy_twice, run)
+    assert len(requests) == 3 and no_sleep == delays, "429 退避乘 3，5xx 不乘"
+
+    requests.clear()
+    no_sleep.clear()
+
+    def busy(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(status, json={"error": {"message": "slow down"}})
+
+    with pytest.raises(LlmError) as info:
+        run_with(busy, run)
+    assert len(requests) == llm.RETRIES and no_sleep == delays
+    assert info.value.retryable and info.value.status == status and "slow down" in str(info.value)
+
+
 def test_stream_usage_chunk_and_finish_reason():
     body = sse(
         {"choices": [{"index": 0, "delta": {"reasoning_content": "想一想"}}]},
@@ -458,6 +512,15 @@ def test_stream_error_event_and_plain_json_fallback():
     info = StreamInfo()
     text = run_with(lambda r: httpx.Response(200, json=whole), lambda client: collect_stream(client, info))
     assert text == "整段回复" and info.tokens == 9 and info.finish_reason == "stop", "中转不支持流式时直接给整段"
+
+    bare = {"choices": [{"message": {"content": "整段回复"}}]}
+    info = StreamInfo()
+    run_with(lambda r: httpx.Response(200, json=bare), lambda client: collect_stream(client, info))
+    chat = run_with(lambda r: httpx.Response(200, json=bare), lambda client: client.chat(MESSAGES))
+    assert info.finish_reason is None and chat.finish_reason is None, "缺结束原因时流式和非流式都保持 None"
+    failed = {"error": {"message": "quota exceeded"}}
+    with pytest.raises(LlmError, match="大模型返回错误：quota exceeded"):
+        run_with(lambda r: httpx.Response(200, json=failed), lambda client: client.chat(MESSAGES))
 
 
 def test_collect_returns_text_tokens_and_finish_reason():

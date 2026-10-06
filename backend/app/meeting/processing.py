@@ -16,7 +16,6 @@ from ..llm import LlmClient, LlmError
 from ..models import Meeting
 from . import minutes, polish, speakers
 from .llm_config import resolve_meeting_llm
-from .llmcall import is_fatal
 
 if TYPE_CHECKING:
     from .manager import MeetingManager
@@ -24,6 +23,8 @@ if TYPE_CHECKING:
 log = logging.getLogger("bdw.meetings.processing")
 
 OPS = ("speakers", "polish", "minutes")
+# 成员端看到的步骤名（管理后台的叫法见 llm_config.STEP_LABELS）
+OP_LABELS = {"speakers": "识别说话人", "polish": "整理逐字稿", "minutes": "生成纪要"}
 # 进度区间（0–1，由 manager.set_progress 映射到整体进度的 60–100）
 SPEAKERS_SPAN = (0.0, 0.1)
 POLISH_SPAN = (0.1, 0.7)
@@ -61,15 +62,12 @@ async def run_pipeline_steps(manager: MeetingManager, meeting_id: str) -> dict[s
     只跳过后面用同一个模型的步骤，用别的模型的步骤照常进行。
     """
     warnings: dict[str, str | None] = {}
-    steps = (
-        ("speakers", SPEAKERS_SPAN, "识别说话人"),
-        ("polish", POLISH_SPAN, "整理逐字稿"),
-        ("minutes", MINUTES_SPAN, "生成纪要"),
-    )
+    steps = (("speakers", SPEAKERS_SPAN), ("polish", POLISH_SPAN), ("minutes", MINUTES_SPAN))
     dead: set[int] = set()
     skipped: list[str] = []
     unavailable: dict[str, str] = {}
-    for step, span, label in steps:
+    for step, span in steps:
+        label = OP_LABELS[step]
         client, reason = _client(manager, meeting_id, step)
         if client is None:
             if reason is None:  # 会议已删除
@@ -107,7 +105,7 @@ async def run_op(manager: MeetingManager, meeting_id: str, op: str, params: dict
         client, reason = _client(manager, meeting_id, op)
         if client is None:
             return f"无法处理：{reason}" if reason else None
-        label = {"speakers": "识别说话人", "polish": "整理逐字稿", "minutes": "生成纪要"}[op]
+        label = OP_LABELS[op]
         manager.set_progress(meeting_id, 0.0, op)
         warning, _ = await _step(manager, meeting_id, client, op, (0.0, 1.0), label, params)
         return warning
@@ -147,7 +145,7 @@ async def _step(
         return f"未知的步骤：{step}", False
     except LlmError as e:
         log.warning("meeting %s: %s failed: %s", meeting_id, step, e)
-        return f"{label}失败：{e}", is_fatal(e)
+        return f"{label}失败：{e}", e.fatal
     except Exception as e:
         # 识别结果已经可用：程序错误也只记成警告，不让整场会议失败
         log.exception("meeting %s: %s crashed", meeting_id, step)

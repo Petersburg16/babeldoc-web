@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import httpx
+
 from app.models import Meeting, MeetingLlmModel
 from tests.conftest import add_mock_provider, add_user, login
-from tests.llm_fake import FakeLlmFailure, FakeReply, install_fake_llm
+from tests.llm_fake import FakeLlmFailure, FakeReply, install_fake_llm, install_transport
 
 BASE = "/api/admin/meeting-llm"
 TRANSLATION_KEY = "sk-test-1234567890"  # conftest 建的翻译模型
@@ -170,6 +172,43 @@ def test_detect_efforts_fallbacks(app, admin_client):
     assert resp.status_code == 400 and "拒绝了 Key" in resp.json()["detail"]
     resp = admin_client.post(f"{BASE}/models/detect-efforts", json={})
     assert resp.status_code == 400 and "模型名" in resp.json()["detail"]
+
+
+def test_probe_models_and_saved_keys(app, admin_client):
+    seen: list[httpx.Request] = []
+
+    def relay(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.headers.get("authorization") == "Bearer sk-bad":
+            return httpx.Response(401, json={"error": {"message": "invalid api key"}})
+        if request.url.path.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "gpt-6"}, {"id": "gpt-5.6"}, {"id": "gpt-6"}, {}]})
+        return httpx.Response(400, json={"error": {"message": RELAY_400}})
+
+    install_transport(app, relay)
+    [saved] = models(admin_client)
+    resp = admin_client.post(f"{BASE}/models/probe", json={"model_id": saved["id"]})
+    assert resp.status_code == 200 and resp.json() == {"models": ["gpt-5.6", "gpt-6"]}, "去重排序"
+    assert str(seen[-1].url) == "https://example.invalid/v1/models"
+    assert seen[-1].headers["authorization"] == f"Bearer {MEETING_KEY}", "Key 留空时用已保存的会议模型的"
+
+    resp = admin_client.post(f"{BASE}/models/probe", json={"copy_from_model_id": translation_id(admin_client)})
+    assert resp.status_code == 200 and seen[-1].headers["authorization"] == f"Bearer {TRANSLATION_KEY}"
+    resp = admin_client.post(f"{BASE}/models/probe", json={"model_id": saved["id"], "api_key": "sk-typed-123"})
+    assert resp.status_code == 200 and seen[-1].headers["authorization"] == "Bearer sk-typed-123", "填了的以填的为准"
+
+    resp = admin_client.post(
+        f"{BASE}/models/probe", json={"base_url": "https://other.invalid/v1/", "api_key": "sk-bad"}
+    )
+    assert str(seen[-1].url) == "https://other.invalid/v1/models"
+    assert resp.status_code == 400 and resp.json()["detail"] == "接口返回 401：invalid api key"
+
+    resp = admin_client.post(
+        f"{BASE}/models/detect-efforts", json={"model": "gpt-6", "copy_from_model_id": translation_id(admin_client)}
+    )
+    assert resp.status_code == 200 and resp.json()["detected"] == ASTRA
+    assert str(seen[-1].url) == "https://example.invalid/v1/chat/completions"
+    assert seen[-1].headers["authorization"] == f"Bearer {TRANSLATION_KEY}", "检测档位也用复制来的 Key"
 
 
 def test_model_test_reports_usage_and_sent_params(app, admin_client):

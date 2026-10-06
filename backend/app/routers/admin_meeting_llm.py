@@ -1,6 +1,7 @@
 """管理后台：会议记录用的大模型（连接、思考档位）与整理方案（4 个用途各用什么模型和参数）。
 
-和翻译模型（/api/admin/models）完全分开。测试、检测档位走会议管理器的 HTTP 客户端，测试时可换成假的大模型。
+和翻译模型（/api/admin/models）完全分开。拉模型列表、检测档位、测试都走会议管理器的 HTTP 客户端，
+测试时可换成假的大模型。
 """
 
 from __future__ import annotations
@@ -13,8 +14,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ..deps import AppContext, CtxDep, DbDep, require_admin
-from ..llm import DEFAULT_BASE_URL, LlmClient, LlmConfig, LlmError
-from ..llm_check import list_remote_models
+from ..llm import LlmClient, LlmConfig, LlmError
 from ..meeting.llm_config import (
     STEP_LABELS,
     STEPS,
@@ -28,6 +28,7 @@ from ..meeting.llm_config import (
     load_steps,
     normalize_levels,
     parse_valid_levels,
+    step_model,
 )
 from ..meeting.schemas import (
     EffortDetectOut,
@@ -43,6 +44,7 @@ from ..meeting.schemas import (
     PresetTestIn,
 )
 from ..models import MeetingLlmModel, MeetingLlmPreset, ModelProfile
+from ..openai_compat import auth_headers, endpoint, failure_text, fetch_models
 
 router = APIRouter(prefix="/api/admin/meeting-llm", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -170,14 +172,14 @@ def _probe_credentials(db: Session, ctx: AppContext, body: LlmProbeIn) -> tuple[
         source = _translation_model(db, body.copy_from_model_id)
         base_url = base_url or source.base_url
         api_key = api_key or ctx.secrets.decrypt(source.api_key_enc)
-    return (base_url or DEFAULT_BASE_URL).rstrip("/"), api_key
+    return base_url, api_key
 
 
 @router.post("/models/probe")
-def probe_models(body: LlmProbeIn, db: DbDep, ctx: CtxDep) -> dict[str, list[str]]:
+async def probe_models(body: LlmProbeIn, db: DbDep, ctx: CtxDep) -> dict[str, list[str]]:
     base_url, api_key = _probe_credentials(db, ctx, body)
     try:
-        return {"models": list_remote_models(base_url, api_key)}
+        return {"models": await fetch_models(_http(ctx), base_url, api_key)}
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
 
@@ -202,11 +204,12 @@ async def detect_efforts(body: LlmProbeIn, db: DbDep, ctx: CtxDep) -> EffortDete
         "reasoning_effort": "bdw-probe",
         "max_completion_tokens": 1,
     }
-    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     try:
-        resp = await http.post(f"{base_url}/chat/completions", json=payload, headers=headers, timeout=60.0)
+        resp = await http.post(
+            endpoint(base_url, "/chat/completions"), json=payload, headers=auth_headers(api_key), timeout=60.0
+        )
     except Exception as e:
-        raise HTTPException(400, f"连接失败：{e.__class__.__name__}: {e}"[:300]) from e
+        raise HTTPException(400, failure_text("连接失败", e)) from e
     text = resp.text[:1000]
     detected = parse_valid_levels(text) if resp.status_code == 400 else []
     if detected:
@@ -272,8 +275,7 @@ def _get_preset(db: Session, preset_id: int) -> MeetingLlmPreset:
 def _problems(db: Session, steps: PresetSteps) -> list[str]:
     out = []
     for step in STEPS:
-        sc: StepConfig = getattr(steps, step)
-        model = db.get(MeetingLlmModel, sc.model_id) if sc.model_id is not None else None
+        sc, model = step_model(db, steps, step)
         label = STEP_LABELS[step]
         if model is None:
             out.append(f"“{label}”没有可用的模型")
@@ -373,8 +375,7 @@ def delete_preset(preset_id: int, db: DbDep) -> None:
 async def test_preset(preset_id: int, body: PresetTestIn, db: DbDep, ctx: CtxDep) -> LlmTestOut:
     """按方案里这个用途的实际参数发一句话（最多等 2 分钟）。"""
     p = _get_preset(db, preset_id)
-    sc: StepConfig = getattr(load_steps(p.steps), body.step)
-    model = db.get(MeetingLlmModel, sc.model_id) if sc.model_id is not None else None
+    sc, model = step_model(db, load_steps(p.steps), body.step)
     if model is None:
         raise HTTPException(400, f"“{STEP_LABELS[body.step]}”没有可用的模型")
     cfg = build_config(model, ctx.secrets, sc, step=body.step, label=f"{p.name}·{STEP_LABELS[body.step]}")

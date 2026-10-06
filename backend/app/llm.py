@@ -15,14 +15,16 @@ import json
 import logging
 import re
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
 
+from .openai_compat import auth_headers, endpoint, error_text, failure_text
+
 log = logging.getLogger("bdw.llm")
 
-DEFAULT_BASE_URL = "https://api.openai.com/v1"
 RETRIES = 3
 DEFAULT_TIMEOUT = 300.0
 RESERVED = frozenset({"model", "messages", "stream", "stream_options"})
@@ -51,6 +53,13 @@ class LlmError(Exception):
         self.status = status
         self.no_retry = no_retry
         self.tokens = tokens  # 出错前对方已经计费的 token（例如思考用完了输出额度）
+
+    @property
+    def fatal(self) -> bool:
+        """密钥无效、模型不存在、重试后仍连不上：后面的请求也会一样失败，没必要接着发。"""
+        if self.status in (401, 403, 404):
+            return True
+        return self.status is None and self.retryable
 
 
 @dataclass(frozen=True)
@@ -106,17 +115,6 @@ def _limiter(cfg: LlmConfig) -> asyncio.Semaphore:
     return sem
 
 
-def _error_text(resp: httpx.Response) -> str:
-    try:
-        data = resp.json()
-    except ValueError:
-        return resp.text[:300] or resp.reason_phrase
-    err = data.get("error") if isinstance(data, dict) else None
-    if isinstance(err, dict):
-        return str(err.get("message") or err)[:300]
-    return str(err or data)[:300]
-
-
 def _usage(data: dict[str, Any]) -> tuple[int, int]:
     usage = data.get("usage") or {}
     details = usage.get("completion_tokens_details") or usage.get("output_tokens_details") or {}
@@ -130,6 +128,34 @@ def _check_length(text: str, finish_reason: str | None, tokens: int) -> None:
             no_retry=True,
             tokens=tokens,
         )
+
+
+def _retry_delay(resp: httpx.Response, attempt: int) -> float:
+    """接口报错时：429、5xx 还能重试就返回要等的秒数，否则（4xx、次数用完）抛 LlmError。"""
+    status = resp.status_code
+    retryable = status == 429 or status >= 500
+    if not retryable or attempt >= RETRIES:
+        raise LlmError(f"大模型接口返回 {status}：{error_text(resp)}", retryable=retryable, status=status)
+    return 2**attempt * (3 if status == 429 else 1)
+
+
+def _whole_reply(resp: httpx.Response) -> ChatResult:
+    """解析非流式的整段回复（思考块还没去掉）。缺结束原因时保持 None：调用方只判断是不是 "length"。"""
+    try:
+        data = resp.json()
+    except ValueError as e:
+        raise LlmError("大模型返回的内容不是 OpenAI 兼容格式") from e
+    if isinstance(data, dict) and data.get("error"):
+        raise LlmError(f"大模型返回错误：{error_text(resp)}")
+    try:
+        choice = data["choices"][0]
+        text = choice["message"].get("content") or ""
+    except (KeyError, IndexError, TypeError) as e:
+        raise LlmError("大模型返回的内容不是 OpenAI 兼容格式") from e
+    tokens, reasoning = _usage(data)
+    return ChatResult(
+        text=str(text), tokens=tokens, finish_reason=choice.get("finish_reason"), reasoning_tokens=reasoning
+    )
 
 
 class LlmClient:
@@ -158,60 +184,66 @@ class LlmClient:
             payload["stream_options"] = {"include_usage": True}
         return payload
 
-    def _headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self.cfg.api_key}"} if self.cfg.api_key else {}
-
     def _timeout(self, timeout: float | None) -> httpx.Timeout:
         read = timeout or self.cfg.timeout or DEFAULT_TIMEOUT
         return httpx.Timeout(connect=15.0, read=read, write=60.0, pool=30.0)
+
+    @asynccontextmanager
+    async def _send(
+        self, payload: dict[str, Any], limit: httpx.Timeout, *, waiting: str
+    ) -> AsyncIterator[httpx.Response]:
+        """发出请求，交出状态正常、正文还没读的回复，调用方在 async with 里读正文；chat() 和 stream() 共用。
+
+        请求和读正文时 httpx 的错误都在这里转成 LlmError。重试只发生在交出回复之前：连不上（对方没收到），
+        或者对方回了 429、5xx。读超时、交出回复之后的任何错误都不重试：请求多半已经在计费。
+        waiting 是读超时报错里的说法，例如“没有回复完”。
+        """
+        url = endpoint(self.cfg.base_url, "/chat/completions")
+        attempt = 0
+        while True:
+            attempt += 1
+            opened = False
+            try:
+                async with (
+                    _limiter(self.cfg),
+                    self.http.stream(
+                        "POST", url, json=payload, headers=auth_headers(self.cfg.api_key), timeout=limit
+                    ) as resp,
+                ):
+                    if resp.status_code < 400:
+                        opened = True
+                        yield resp
+                        return
+                    await resp.aread()
+                    delay = _retry_delay(resp, attempt)
+            except httpx.HTTPError as e:
+                connect = not opened and isinstance(e, _CONNECT_ERRORS)
+                if connect and attempt < RETRIES:
+                    await asyncio.sleep(2**attempt)
+                    continue
+                if connect:
+                    raise LlmError(failure_text("连接大模型失败", e), retryable=True) from e
+                if isinstance(e, httpx.TimeoutException):
+                    # 请求已经发出：对方多半还在思考或生成，这里重发只会重复计费、长时间占着大模型锁；交给调用方决定
+                    raise LlmError(f"大模型在 {int(limit.read or 0)} 秒内{waiting}：{e.__class__.__name__}") from e
+                raise LlmError(failure_text("大模型连接中断", e)) from e
+            await asyncio.sleep(delay)
 
     async def chat(
         self, messages: list[dict[str, str]], *, json_object: bool = False, timeout: float | None = None
     ) -> ChatResult:
         """一次完整回复（非流式）。连不上、429、5xx 自动重试，其余错误直接抛 LlmError。"""
         payload = self.payload(messages, json_object=json_object)
-        url = f"{self.cfg.base_url}/chat/completions"
-        limit = self._timeout(timeout)
-        attempt = 0
-        while True:
-            attempt += 1
-            try:
-                async with _limiter(self.cfg):
-                    resp = await self.http.post(url, json=payload, headers=self._headers(), timeout=limit)
-            except _CONNECT_ERRORS as e:
-                if attempt >= RETRIES:
-                    raise LlmError(f"连接大模型失败：{e.__class__.__name__}: {e}"[:300], retryable=True) from e
-                await asyncio.sleep(2**attempt)
-                continue
-            except httpx.TimeoutException as e:
-                # 请求已经发出：对方多半还在思考或生成，这里重发只会重复计费、长时间占着大模型锁；交给调用方决定
-                raise LlmError(f"大模型在 {int(limit.read or 0)} 秒内没有回复完：{e.__class__.__name__}") from e
-            except httpx.HTTPError as e:
-                raise LlmError(f"大模型连接中断：{e.__class__.__name__}: {e}"[:300]) from e
-            if resp.status_code == 429 or resp.status_code >= 500:
-                if attempt >= RETRIES:
-                    raise LlmError(
-                        f"大模型接口返回 {resp.status_code}：{_error_text(resp)}",
-                        retryable=True,
-                        status=resp.status_code,
-                    )
-                await asyncio.sleep(2**attempt * (3 if resp.status_code == 429 else 1))
-                continue
-            if resp.status_code >= 400:
-                raise LlmError(f"大模型接口返回 {resp.status_code}：{_error_text(resp)}", status=resp.status_code)
-            try:
-                data = resp.json()
-                choice = data["choices"][0]
-                text = choice["message"].get("content") or ""
-            except (ValueError, KeyError, IndexError, TypeError) as e:
-                raise LlmError("大模型返回的内容不是 OpenAI 兼容格式") from e
-            tokens, reasoning = _usage(data)
-            finish = choice.get("finish_reason")
-            text = strip_think(str(text))
-            _check_length(text, finish, tokens)
-            if reasoning:
-                log.info("%s: %d tokens (%d reasoning)", self.cfg.label or self.cfg.model, tokens, reasoning)
-            return ChatResult(text=text, tokens=tokens, finish_reason=finish, reasoning_tokens=reasoning)
+        async with self._send(payload, self._timeout(timeout), waiting="没有回复完") as resp:
+            await resp.aread()
+        result = _whole_reply(resp)
+        result.text = strip_think(result.text)
+        _check_length(result.text, result.finish_reason, result.tokens)
+        if result.reasoning_tokens:
+            log.info(
+                "%s: %d tokens (%d reasoning)", self.cfg.label or self.cfg.model, result.tokens, result.reasoning_tokens
+            )
+        return result
 
     async def collect(
         self, messages: list[dict[str, str]], *, json_object: bool = False, timeout: float | None = None
@@ -244,93 +276,48 @@ class LlmClient:
         """
         info = info if info is not None else StreamInfo()
         payload = self.payload(messages, json_object=json_object, stream=True)
-        url = f"{self.cfg.base_url}/chat/completions"
-        limit = self._timeout(timeout)
-        attempt = 0
-        while True:
-            attempt += 1
-            try:
-                async with (
-                    _limiter(self.cfg),
-                    self.http.stream("POST", url, json=payload, headers=self._headers(), timeout=limit) as resp,
-                ):
-                    if resp.status_code == 429 or resp.status_code >= 500:
-                        await resp.aread()
-                        if attempt < RETRIES:
-                            raise _Retry
-                        raise LlmError(
-                            f"大模型接口返回 {resp.status_code}：{_error_text(resp)}",
-                            retryable=True,
-                            status=resp.status_code,
-                        )
-                    if resp.status_code >= 400:
-                        await resp.aread()
-                        raise LlmError(
-                            f"大模型接口返回 {resp.status_code}：{_error_text(resp)}", status=resp.status_code
-                        )
-                    if "text/event-stream" not in resp.headers.get("content-type", ""):
-                        # 中转不支持流式时会直接返回整段回复
-                        await resp.aread()
-                        try:
-                            data = resp.json()
-                        except ValueError as e:
-                            raise LlmError("大模型返回的内容不是 OpenAI 兼容格式") from e
-                        if isinstance(data, dict) and data.get("error"):
-                            raise LlmError(f"大模型返回错误：{_error_text(resp)}")
-                        try:
-                            choice = data["choices"][0]
-                            text = choice["message"].get("content") or ""
-                        except (KeyError, IndexError, TypeError) as e:
-                            raise LlmError("大模型返回的内容不是 OpenAI 兼容格式") from e
-                        info.tokens, info.reasoning_tokens = _usage(data)
-                        info.finish_reason = choice.get("finish_reason") or "stop"
-                        if text:
-                            yield str(text)
-                        return
-                    done = False
-                    async for line in resp.aiter_lines():
-                        line = line.strip()
-                        if not line.startswith("data:"):
-                            continue
-                        data = line[5:].strip()
-                        if data == "[DONE]":
-                            done = True
-                            break
-                        try:
-                            event = json.loads(data)
-                        except ValueError:
-                            continue
-                        if not isinstance(event, dict):
-                            continue
-                        if event.get("error"):
-                            err = event["error"]
-                            message = err.get("message") if isinstance(err, dict) else err
-                            raise LlmError(f"大模型返回错误：{str(message)[:300]}")
-                        if event.get("usage"):
-                            # 用量单独一块，choices 为空
-                            info.tokens, info.reasoning_tokens = _usage(event)
-                        for choice in event.get("choices") or []:
-                            if not isinstance(choice, dict):
-                                continue
-                            if choice.get("finish_reason"):
-                                info.finish_reason = choice["finish_reason"]
-                            text = (choice.get("delta") or {}).get("content")
-                            if text:
-                                yield str(text)
-                    if not done and info.finish_reason is None:
-                        raise LlmError("大模型的回复没有正常结束（连接提前断开），内容可能不完整")
-                    return
-            except _Retry:
-                await asyncio.sleep(2**attempt)
-            except _CONNECT_ERRORS as e:
-                if attempt >= RETRIES:
-                    raise LlmError(f"连接大模型失败：{e.__class__.__name__}: {e}"[:300], retryable=True) from e
-                await asyncio.sleep(2**attempt)
-            except httpx.TimeoutException as e:
-                raise LlmError(f"大模型在 {int(limit.read or 0)} 秒内没有新的输出：{e.__class__.__name__}") from e
-            except httpx.HTTPError as e:
-                raise LlmError(f"大模型连接中断：{e.__class__.__name__}: {e}"[:300]) from e
-
-
-class _Retry(Exception):
-    pass
+        async with self._send(payload, self._timeout(timeout), waiting="没有新的输出") as resp:
+            if "text/event-stream" not in resp.headers.get("content-type", ""):
+                # 中转不支持流式时会直接返回整段回复
+                await resp.aread()
+                whole = _whole_reply(resp)
+                info.tokens, info.reasoning_tokens, info.finish_reason = (
+                    whole.tokens,
+                    whole.reasoning_tokens,
+                    whole.finish_reason,
+                )
+                if whole.text:
+                    yield whole.text
+                return
+            done = False
+            async for line in resp.aiter_lines():
+                line = line.strip()
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    done = True
+                    break
+                try:
+                    event = json.loads(data)
+                except ValueError:
+                    continue
+                if not isinstance(event, dict):
+                    continue
+                if event.get("error"):
+                    err = event["error"]
+                    message = err.get("message") if isinstance(err, dict) else err
+                    raise LlmError(f"大模型返回错误：{str(message)[:300]}")
+                if event.get("usage"):
+                    # 用量单独一块，choices 为空
+                    info.tokens, info.reasoning_tokens = _usage(event)
+                for choice in event.get("choices") or []:
+                    if not isinstance(choice, dict):
+                        continue
+                    if choice.get("finish_reason"):
+                        info.finish_reason = choice["finish_reason"]
+                    text = (choice.get("delta") or {}).get("content")
+                    if text:
+                        yield str(text)
+            if not done and info.finish_reason is None:
+                raise LlmError("大模型的回复没有正常结束（连接提前断开），内容可能不完整")

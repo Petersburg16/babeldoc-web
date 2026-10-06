@@ -18,12 +18,13 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select
 
 from ..deps import AppContext, CtxDep, DbDep, UserDep, current_user_id
 from ..llm import LlmClient, LlmConfig, LlmError, StreamInfo
 from ..meeting import chat
 from ..meeting.llm_config import resolve_meeting_llm
+from ..meeting.llmcall import increment_meeting_tokens
 from ..meeting.schemas import MessageOut
 from ..models import Meeting, MeetingMessage, MeetingSegment
 from ..settings_store import load_settings
@@ -141,11 +142,8 @@ def save_answer(ctx: AppContext, meeting_id: str, user_message_id: int, answer: 
             return None
         message = MeetingMessage(meeting_id=meeting_id, role="assistant", content=answer, tokens=tokens)
         db.add(message)
-        # 用 SQL 自增：后台整理步骤可能同时在累加同一场会议的用量
-        db.execute(
-            update(Meeting).where(Meeting.id == meeting_id).values(tokens=Meeting.tokens + tokens),
-            execution_options={"synchronize_session": False},
-        )
+        # 和插入回答在同一个事务里提交；用 SQL 自增：后台整理步骤可能同时在累加同一场会议的用量
+        increment_meeting_tokens(db, meeting_id, tokens)
         db.commit()
         out = MessageOut.of(message)
     ctx.meetings.publish(meeting_id)

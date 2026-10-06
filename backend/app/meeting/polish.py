@@ -21,7 +21,7 @@ from sqlalchemy import select, update
 from ..llm import LlmClient, LlmError
 from ..models import Meeting, MeetingSegment
 from . import glossary, prompts
-from .llmcall import ask, is_fatal
+from .llmcall import ask
 
 if TYPE_CHECKING:
     from .manager import MeetingManager
@@ -189,7 +189,7 @@ async def polish_meeting(
             if isinstance(outcome, LlmError):
                 report.failed += 1
                 last_error = last_error or str(outcome)
-                if is_fatal(outcome):
+                if outcome.fatal:
                     report.fatal = outcome
             else:
                 accepted, rejected = outcome
@@ -251,7 +251,7 @@ async def _polish_chunk(
         try:
             result = await ask(manager, meeting_id, client, messages)
         except LlmError as e:
-            if is_fatal(e) or e.no_retry:
+            if e.fatal or e.no_retry:
                 return e
             error = e
             continue

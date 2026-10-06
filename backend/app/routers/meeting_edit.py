@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from ..deps import CtxDep, DbDep, UserDep
 from ..meeting.llm_config import resolve_meeting_llm
-from ..meeting.processing import OPS
+from ..meeting.processing import OP_LABELS, OPS
 from ..meeting.schemas import MeetingDetailOut, MeetingOut, SegmentOut
 from ..meeting.speakers import lock_meeting, speaker_number
 from ..meeting.templates import TEMPLATE_IDS
@@ -25,7 +25,6 @@ from .meetings import detail_out, own_meeting, usable_preset
 
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
 
-OP_LABELS = {"speakers": "识别说话人", "polish": "整理逐字稿", "minutes": "生成纪要"}
 MAX_TEXT = 5000
 MAX_NAME = 32
 

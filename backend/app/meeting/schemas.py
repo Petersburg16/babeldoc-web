@@ -10,7 +10,7 @@ from ..models import AsrProvider, GlossaryTerm, Meeting, MeetingLlmModel, Meetin
 from ..schemas import BaseUrl
 from ..security import SecretBox, mask_secret
 from .asr import adapter_class
-from .llm_config import EFFORT_ORDER, PresetSteps, builtin_efforts, normalize_levels
+from .llm_config import EFFORT_ORDER, PresetSteps, Step, builtin_efforts, normalize_effort, normalize_levels
 from .templates import TEMPLATE_IDS
 
 
@@ -495,10 +495,7 @@ class LlmTestIn(BaseModel):
     @classmethod
     def _effort(cls, v: str) -> str:
         # 不认识的档位在这里拦成 422；放到接口里再建 StepConfig 会变成 500
-        v = (v or "default").strip().lower()
-        if v != "default" and v not in EFFORT_ORDER:
-            raise ValueError(f"未知的思考强度：{v}")
-        return v
+        return normalize_effort(v)
 
 
 class LlmTestOut(BaseModel):
@@ -543,4 +540,4 @@ class PresetPatch(BaseModel):
 
 
 class PresetTestIn(BaseModel):
-    step: str = Field(pattern="^(speakers|polish|minutes|chat)$")
+    step: Step
