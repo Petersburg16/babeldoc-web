@@ -10,7 +10,7 @@ from fastapi import HTTPException
 
 MAX_FILES_PER_UPLOAD = 10  # 翻译一次最多上传几个文件
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
-_LINE_CONTROL = re.compile(r"[\x00-\x1f\x7f￾￿]")
+_LINE_CONTROL = re.compile(r"[\x00-\x1f\x7f\ufffe\uffff]")
 
 
 def clean_filename(raw: str | None) -> str:
