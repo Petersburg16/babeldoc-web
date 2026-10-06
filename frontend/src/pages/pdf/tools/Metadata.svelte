@@ -2,10 +2,11 @@
   import { untrack } from 'svelte';
   import FilePicker from '../../../components/FilePicker.svelte';
   import Switch from '../../../components/Switch.svelte';
+  import { errorText } from '../../../lib/format';
   import { CircleAlert, LoaderCircle, Lock, Plus, RotateCcw, Trash2, TriangleAlert } from '../../../lib/icons';
   import { engines } from '../../../lib/pdf/engines.svelte';
   import { pdfBlob, renamed, type Report } from '../../../lib/pdf/files';
-  import { Cancelled, unlockPdf, unreadable } from '../../../lib/pdf/input';
+  import { Cancelled, readUserPdf } from '../../../lib/pdf/input';
   import type { MetadataEdit, PdfMetadata, TextField } from '../../../lib/pdf/ops/metadata';
   import { currentTool } from '../../../lib/pdf/tools';
   import ToolFrame from '../ui/ToolFrame.svelte';
@@ -147,7 +148,7 @@
       }
       await engines.ensure(ENGINES);
       const { readMetadata } = await import('../../../lib/pdf/ops/metadata');
-      const { bytes, encrypted } = await unlockPdf(file);
+      const { bytes, encrypted } = await readUserPdf(file);
       const meta = await readMetadata(bytes);
       if (mine !== token) return;
       source = { file, bytes, encrypted, meta };
@@ -158,7 +159,8 @@
       if (e instanceof Cancelled) loadError = '这个 PDF 有打开密码，输入密码后才能读取属性';
       else {
         console.error(e);
-        loadError = unreadable(file);
+        // qpdf 的报错 readUserPdf 已换成带文件名的说明（引擎崩溃时请用户重试）；引擎下载、pdf-lib 出错时照原样显示原因
+        loadError = errorText(e);
       }
     } finally {
       if (mine === token) loading = false;

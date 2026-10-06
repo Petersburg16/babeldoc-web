@@ -46,7 +46,7 @@ export function unreadable(file: File) {
 }
 
 /**
- * 开始处理时读入用户选的 PDF：加密的先解开（要密码时弹窗），结果不再加密；countPages 时顺带读页数。
+ * 读入用户选的 PDF：加密的先解开（要密码时弹窗），结果不再加密；countPages 时顺带读页数。
  * qpdf 读不了时换成带文件名的中文说明；引擎崩溃（worker 自己重跑也失败）时请用户重试，不说成文件损坏。
  * 需要 qpdf 引擎（调用方先 ensure 'qpdf'）
  */
