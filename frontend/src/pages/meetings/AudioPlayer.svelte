@@ -76,7 +76,7 @@
     }
   }
 
-  export function toggle() {
+  function toggle() {
     if (!audio || failed) return;
     if (audio.paused) void play();
     else audio.pause();

@@ -6,22 +6,18 @@
   import { FileType, Subtitles, TextQuote } from '../../lib/meeting/icons';
   import type { ExportContent, ExportFormat, MeetingDetail } from '../../lib/meeting/types';
 
+  // 只在已有逐字稿时显示（MeetingDetailPage 外层判断），这里不再处理没有逐字稿的情况
   interface Props {
     meeting: MeetingDetail;
-    size?: 'sm' | 'md';
   }
 
-  let { meeting, size = 'sm' }: Props = $props();
+  let { meeting }: Props = $props();
 
   const hasMinutes = $derived(!!meeting.minutes_md);
-  const hasTranscript = $derived(meeting.transcript_state !== 'none');
 
   let chosen = $state<ExportContent>('both');
-  // 选中的内容暂时没有（例如纪要还没生成）时退回到有的那一种
-  const content = $derived.by<ExportContent>(() => {
-    if (hasMinutes && hasTranscript) return chosen;
-    return hasMinutes ? 'minutes' : 'transcript';
-  });
+  // 纪要还没生成时只能导出逐字稿
+  const content = $derived<ExportContent>(hasMinutes ? chosen : 'transcript');
 
   const formats: { format: ExportFormat; label: string; hint: string; icon: typeof FileText }[] = [
     { format: 'docx', label: 'Word', hint: '.docx，适合打印和归档', icon: FileText },
@@ -32,13 +28,7 @@
 
 <Menu width="w-64">
   {#snippet trigger({ toggle, open })}
-    <button
-      class="btn btn-secondary {size === 'sm' ? 'btn-sm' : ''}"
-      aria-expanded={open}
-      aria-haspopup="menu"
-      disabled={!hasMinutes && !hasTranscript}
-      onclick={toggle}
-    >
+    <button class="btn btn-secondary btn-sm" aria-expanded={open} aria-haspopup="menu" onclick={toggle}>
       <Download class="size-3.5" /> 导出 <ChevronDown class="size-3.5" />
     </button>
   {/snippet}
@@ -50,9 +40,9 @@
         size="sm"
         ariaLabel="导出内容"
         options={[
-          { value: 'both', label: '全部', disabled: !hasMinutes || !hasTranscript },
+          { value: 'both', label: '全部', disabled: !hasMinutes },
           { value: 'minutes', label: '只要纪要', disabled: !hasMinutes },
-          { value: 'transcript', label: '只要逐字稿', disabled: !hasTranscript },
+          { value: 'transcript', label: '只要逐字稿' },
         ]}
       />
     </div>
@@ -73,28 +63,18 @@
       </a>
     {/each}
     <div class="menu-sep"></div>
-    {#if hasTranscript}
-      <a
-        class="menu-item"
-        role="menuitem"
-        href={exportUrl(meeting.id, 'srt', 'transcript')}
-        download
-        onclick={close}
-      >
-        <Subtitles class="size-4 shrink-0 text-muted" />
-        <span class="min-w-0 flex-1">
-          <span class="block">字幕</span>
-          <span class="block text-[11.5px] text-muted">.srt，只含逐字稿，可配合录音播放</span>
-        </span>
-      </a>
-    {:else}
-      <div class="menu-item cursor-not-allowed opacity-50 hover:bg-transparent" role="menuitem" aria-disabled="true">
-        <Subtitles class="size-4 shrink-0 text-muted" />
-        <span class="min-w-0 flex-1">
-          <span class="block">字幕</span>
-          <span class="block text-[11.5px] text-muted">还没有逐字稿</span>
-        </span>
-      </div>
-    {/if}
+    <a
+      class="menu-item"
+      role="menuitem"
+      href={exportUrl(meeting.id, 'srt', 'transcript')}
+      download
+      onclick={close}
+    >
+      <Subtitles class="size-4 shrink-0 text-muted" />
+      <span class="min-w-0 flex-1">
+        <span class="block">字幕</span>
+        <span class="block text-[11.5px] text-muted">.srt，只含逐字稿，可配合录音播放</span>
+      </span>
+    </a>
   {/snippet}
 </Menu>

@@ -4,11 +4,10 @@
   interface Props {
     trigger: Snippet<[{ toggle: () => void; open: boolean }]>;
     children: Snippet<[{ close: () => void }]>;
-    align?: 'start' | 'end';
     width?: string;
   }
 
-  let { trigger, children, align = 'end', width = 'w-48' }: Props = $props();
+  let { trigger, children, width = 'w-48' }: Props = $props();
   let open = $state(false);
   let root = $state<HTMLElement>();
 
@@ -23,7 +22,7 @@
   {@render trigger({ toggle: () => (open = !open), open })}
   {#if open}
     <div
-      class="animate-pop absolute top-full z-40 mt-1.5 {align === 'end' ? 'right-0' : 'left-0'} {width} rounded-xl border border-line bg-surface p-1 shadow-pop"
+      class="animate-pop absolute top-full right-0 z-40 mt-1.5 {width} rounded-xl border border-line bg-surface p-1 shadow-pop"
       role="menu"
     >
       {@render children({ close: () => (open = false) })}

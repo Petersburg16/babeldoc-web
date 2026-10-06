@@ -3,18 +3,17 @@
     value: number;
     active?: boolean;
     tone?: 'accent' | 'good' | 'warn' | 'bad';
-    height?: string;
     label?: string;
   }
 
-  let { value, active = false, tone = 'accent', height = 'h-1.5', label }: Props = $props();
+  let { value, active = false, tone = 'accent', label }: Props = $props();
 
   const fills = { accent: 'bg-accent', good: 'bg-good', warn: 'bg-warn', bad: 'bg-bad' };
   const pct = $derived(Math.max(0, Math.min(100, value || 0)));
 </script>
 
 <div
-  class="relative w-full overflow-hidden rounded-full bg-accent-track/55 {height}"
+  class="relative h-1.5 w-full overflow-hidden rounded-full bg-accent-track/55"
   role="progressbar"
   aria-label={label}
   aria-valuemin={0}

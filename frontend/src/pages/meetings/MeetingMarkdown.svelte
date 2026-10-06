@@ -8,10 +8,9 @@
     speakers: Record<string, SpeakerInfo>;
     durationMs?: number;
     onseek: (ms: number) => void;
-    class?: string;
   }
 
-  let { source, speakers, durationMs, onseek, class: className = '' }: Props = $props();
+  let { source, speakers, durationMs, onseek }: Props = $props();
 
   // 改名、合并时 speakers 会变，这里跟着重新渲染，不用重新拉纪要
   const html = $derived(renderMarkdown(source, speakers, durationMs));
@@ -26,7 +25,7 @@
 
 <!-- 点击来自内部的真按钮，键盘可达；外层 div 只负责转发 -->
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="md {className}" {onclick}>
+<div class="md" {onclick}>
   {@html html}
 </div>
 
