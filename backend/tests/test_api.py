@@ -16,8 +16,7 @@ from app.models import (
     MEETING_RETRYABLE,
     Job,
 )
-
-from .conftest import ADMIN, add_user, build_config, login, make_pdf, upload, wait_status
+from tests.conftest import ADMIN, add_user, build_config, login, make_pdf, update_settings, upload, wait_status
 
 
 def test_meta_reports_setup_and_languages(client):
@@ -207,9 +206,7 @@ def test_admin_cannot_lock_out_last_admin(admin_client):
 
 
 def test_settings_roundtrip(admin_client):
-    settings = admin_client.get("/api/admin/settings").json()
-    settings.update(site_name="我的翻译站", max_concurrent_jobs=2)
-    saved = admin_client.put("/api/admin/settings", json=settings).json()
+    saved = update_settings(admin_client, site_name="我的翻译站", max_concurrent_jobs=2).json()
     assert saved["site_name"] == "我的翻译站"
     assert admin_client.get("/api/meta").json()["site_name"] == "我的翻译站"
 

@@ -7,13 +7,12 @@ from typing import Any
 import httpx
 
 from app.models import Meeting, MeetingLlmModel
-from tests.conftest import add_mock_provider, add_user, login
+from tests.conftest import ASTRA, add_mock_provider, add_user, login
 from tests.llm_fake import FakeLlmFailure, FakeReply, install_fake_llm, install_transport
 
 BASE = "/api/admin/meeting-llm"
 TRANSLATION_KEY = "sk-test-1234567890"  # conftest 建的翻译模型
 MEETING_KEY = "sk-meeting-1234567890"  # conftest 建的会议模型
-ASTRA = ["low", "medium", "high", "xhigh", "max"]
 RELAY_400 = 'level "bdw-probe" not supported, valid levels: low, medium, high, xhigh, max'
 
 

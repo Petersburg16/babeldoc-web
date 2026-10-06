@@ -14,8 +14,8 @@ from app.meeting.schemas import MessageOut
 from app.models import Meeting, MeetingMessage, MeetingSegment, User
 from app.routers import meeting_chat
 from app.security import new_job_id
-from tests.conftest import add_user, login
-from tests.llm_fake import FakeLlmFailure, FakeReply, _sse, install_fake_llm
+from tests.conftest import add_user, login, update_settings
+from tests.llm_fake import FakeLlmFailure, FakeReply, install_fake_llm, install_transport, plain_sse
 
 LINES = [
     (15_000, "S1", "大家好，我是张老师，今天主要过一下大家的进展。"),
@@ -101,8 +101,7 @@ def ask(client, meeting_id: str, content: str):
 
 
 def set_context_chars(client, chars: int) -> None:
-    settings = client.get("/api/admin/settings").json()
-    resp = client.put("/api/admin/settings", json={**settings, "meeting_context_chars": chars})
+    resp = update_settings(client, meeting_context_chars=chars)
     assert resp.status_code == 200, resp.text
 
 
@@ -249,9 +248,9 @@ def test_heartbeat_before_first_text(app, admin_client, monkeypatch):
 
     async def slow(request: httpx.Request) -> httpx.Response:
         await asyncio.sleep(0.4)
-        return httpx.Response(200, content=_sse("想好了"), headers={"content-type": "text/event-stream"})
+        return httpx.Response(200, content=plain_sse("想好了"), headers={"content-type": "text/event-stream"})
 
-    app.state.ctx.meetings.http = httpx.AsyncClient(transport=httpx.MockTransport(slow))
+    install_transport(app, slow)
     mid = make_meeting(app, user_id(app, "admin"))
     resp, events = ask(admin_client, mid, "说了什么？")
     assert "\n: ping\n" in "\n" + resp.text

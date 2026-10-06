@@ -6,24 +6,16 @@
 
 from __future__ import annotations
 
-import math
 import random
-import shutil
 import subprocess
-import wave
-from array import array
 from collections.abc import Callable
 from pathlib import Path
-
-import pytest
 
 from app.meeting import split
 from app.meeting.align import Alignment, align_parts, normalize_single
 from app.meeting.asr.base import AsrSegment
 from app.meeting.media import detect_silences, probe, transcode_args
-from tests.conftest import build_config
-
-needs_ffmpeg = pytest.mark.skipif(not shutil.which("ffmpeg"), reason="需要 ffmpeg")
+from tests.conftest import build_config, needs_ffmpeg, wav_bytes
 
 Truth = list[tuple[int, int, str, str]]  # (开始, 结束, 真实说话人, 文字)，绝对时间
 
@@ -264,22 +256,6 @@ def test_plan_parts_short_audio_is_not_cut(tmp_path, monkeypatch):
 # ---------- 真实 ffmpeg ----------
 
 
-def write_wav(path: Path, pattern: list[tuple[float, bool]], rate: int = 16000) -> None:
-    """pattern: [(秒数, 是否有声)]，有声是 440 Hz 正弦波，无声是全零。"""
-    samples = array("h")
-    for seconds, sound in pattern:
-        n = int(seconds * rate)
-        if sound:
-            samples.extend(int(8000 * math.sin(2 * math.pi * 440 * i / rate)) for i in range(n))
-        else:
-            samples.extend([0] * n)
-    with wave.open(str(path), "wb") as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(rate)
-        w.writeframes(samples.tobytes())
-
-
 def to_mp3(ffmpeg: str, wav: Path) -> Path:
     mp3 = wav.parent / "audio.mp3"
     out = subprocess.run(transcode_args(ffmpeg, wav, mp3), capture_output=True, check=False)
@@ -292,7 +268,7 @@ def test_plan_parts_cuts_in_silences(tmp_path, monkeypatch):
     config = build_config(tmp_path, monkeypatch)
     meeting_dir = tmp_path / "m"
     meeting_dir.mkdir()
-    write_wav(meeting_dir / "src.wav", [(2.5, True), (1.0, False)] * 17 + [(2.5, True)])
+    (meeting_dir / "src.wav").write_bytes(wav_bytes([(2.5, True), (1.0, False)] * 17 + [(2.5, True)]))
     audio = to_mp3(config.ffmpeg, meeting_dir / "src.wav")
     (meeting_dir / "part-09.mp3").write_bytes(b"stale")  # 上次切剩的文件要清掉
     duration = probe(config.ffprobe, audio).duration_ms
@@ -330,7 +306,7 @@ def test_plan_parts_cuts_in_silences(tmp_path, monkeypatch):
 @needs_ffmpeg
 def test_plan_parts_hard_cut_without_silence(tmp_path, monkeypatch):
     config = build_config(tmp_path, monkeypatch)
-    write_wav(tmp_path / "src.wav", [(60.0, True)])
+    (tmp_path / "src.wav").write_bytes(wav_bytes([(60.0, True)]))
     audio = to_mp3(config.ffmpeg, tmp_path / "src.wav")
     duration = probe(config.ffprobe, audio).duration_ms
     kwargs = {"overlap_ms": 6_000, "search_ms": 3_000}

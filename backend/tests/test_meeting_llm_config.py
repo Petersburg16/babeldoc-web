@@ -22,7 +22,6 @@ from app.meeting.llm_config import (
     CustomParam,
     PresetSteps,
     StepConfig,
-    build_config,
     builtin_efforts,
     default_step,
     effective_effort,
@@ -33,14 +32,15 @@ from app.meeting.llm_config import (
     parse_valid_levels,
     resolve_meeting_llm,
 )
+from app.meeting.llm_config import build_config as build_llm_config
 from app.models import Meeting, MeetingLlmModel, MeetingLlmPreset, ModelProfile, User
+from tests.conftest import ASTRA
 
 MESSAGES = [{"role": "user", "content": "你好"}]
-ASTRA = ["low", "medium", "high", "xhigh", "max"]
-PLAIN_BOX = SimpleNamespace(decrypt=lambda value: value)  # build_config 只用到 decrypt
+PLAIN_BOX = SimpleNamespace(decrypt=lambda value: value)  # build_llm_config 只用到 decrypt
 
 
-def config(**extra: Any) -> LlmConfig:
+def llm_cfg(**extra: Any) -> LlmConfig:
     values: dict[str, Any] = {
         "model_id": 1,
         "base_url": "https://llm.invalid/v1",
@@ -69,7 +69,7 @@ def meeting_model(model: str = "m", levels: list[str] | None = None, **extra: An
 
 
 def payload_for(sc: StepConfig, model: MeetingLlmModel | None = None, step: str = "minutes", **kwargs: Any) -> dict:
-    cfg = build_config(model or meeting_model(), PLAIN_BOX, sc, step=step, label="测试")
+    cfg = build_llm_config(model or meeting_model(), PLAIN_BOX, sc, step=step, label="测试")
     return LlmClient(cfg, None).payload(MESSAGES, **kwargs)  # type: ignore[arg-type]
 
 
@@ -143,7 +143,7 @@ def test_custom_params_typed_and_reserved():
     assert payload["obj"] == {"a": [1, 2]} and payload["verbosity"] == " low " and payload["temperature"] == 0.7
 
     # 就算绕过校验塞进了保留键，也不能覆盖本站填写的值
-    client = LlmClient(config(extra={"model": "evil", "messages": [], "stream": False, "stream_options": {}}), None)  # type: ignore[arg-type]
+    client = LlmClient(llm_cfg(extra={"model": "evil", "messages": [], "stream": False, "stream_options": {}}), None)  # type: ignore[arg-type]
     assert client.payload(MESSAGES) == {"model": "m", "messages": MESSAGES}
     streamed = client.payload(MESSAGES, stream=True)
     assert streamed["stream"] is True and streamed["stream_options"] == {"include_usage": True}
@@ -346,7 +346,7 @@ def run_with(handler, fn, **extra: Any):
 
     async def main():
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
-            return await fn(LlmClient(config(**extra), http))
+            return await fn(LlmClient(llm_cfg(**extra), http))
 
     return asyncio.run(main())
 
@@ -567,13 +567,13 @@ def test_strip_think_only_leading_block():
 
 def test_limiter_key_includes_namespace_and_qps():
     async def main():
-        base = config(model_id=5, qps=2)
+        base = llm_cfg(model_id=5, qps=2)
         same = llm._limiter(base)
-        assert llm._limiter(config(model_id=5, qps=2)) is same
-        assert llm._limiter(config(model_id=5, qps=2, namespace="meeting-chat")) is not same, "对话单独排队"
-        assert llm._limiter(config(model_id=5, qps=3)) is not same, "改了 QPS 换新的信号量"
-        assert llm._limiter(config(model_id=6, qps=2)) is not same
-        assert llm._limiter(config(model_id=5, qps=20))._value == 8, "同时最多 8 个"
+        assert llm._limiter(llm_cfg(model_id=5, qps=2)) is same
+        assert llm._limiter(llm_cfg(model_id=5, qps=2, namespace="meeting-chat")) is not same, "对话单独排队"
+        assert llm._limiter(llm_cfg(model_id=5, qps=3)) is not same, "改了 QPS 换新的信号量"
+        assert llm._limiter(llm_cfg(model_id=6, qps=2)) is not same
+        assert llm._limiter(llm_cfg(model_id=5, qps=20))._value == 8, "同时最多 8 个"
 
     asyncio.run(main())
 

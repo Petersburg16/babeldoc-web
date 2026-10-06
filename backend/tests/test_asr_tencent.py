@@ -4,7 +4,6 @@ import asyncio
 import hashlib
 import json
 from collections.abc import Awaitable, Callable
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -19,8 +18,8 @@ from app.meeting.asr.tencent import (
     tc3_headers,
     tc3_signature,
 )
+from tests.conftest import asr_fixture
 
-FIXTURES = Path(__file__).parent / "fixtures" / "asr"
 SECRET_ID = "AKIDexample0000"
 FAKE_KEY = "example-secret-key-not-real"
 SECRETS = {"secret_id": SECRET_ID, "secret_key": FAKE_KEY}
@@ -33,10 +32,6 @@ ASR_AUTHORIZATION = (
     f"TC3-HMAC-SHA256 Credential={SECRET_ID}/2023-11-14/asr/tc3_request, "
     f"SignedHeaders=content-type;host;x-tc-action, Signature={ASR_SIGNATURE}"
 )
-
-
-def fixture(name: str) -> dict[str, Any]:
-    return json.loads((FIXTURES / name).read_text("utf-8"))
 
 
 def api_error(code: str, message: str = "示例错误") -> dict[str, Any]:
@@ -147,7 +142,7 @@ def test_adapter_sends_signed_request_end_to_end():
 
 
 def test_submit_request_body():
-    server = Server(fixture("tencent_create.json"))
+    server = Server(asr_fixture("tencent_create.json"))
     opts = SubmitOptions(expected_speakers=4, hotwords=["风电功率", "TCSF-Net", "风电功率", "a|b,c"])
     task_id = run(server, lambda a: a.submit("https://example.org/a.mp3", opts), config={"region": "ap-guangzhou"})
     assert task_id == "1000000286"
@@ -171,7 +166,7 @@ def test_submit_request_body():
 
 
 def test_submit_uses_configured_engine_and_omits_empty_hotwords():
-    server = Server(fixture("tencent_create.json"))
+    server = Server(asr_fixture("tencent_create.json"))
     run(server, lambda a: a.submit("https://example.org/a.mp3", SubmitOptions()), config={"engine": "16k_zh_en_2.0"})
     body = server.body()
     assert body["EngineModelType"] == "16k_zh_en_2.0"
@@ -202,7 +197,7 @@ def test_hotword_list_limits():
 
 @pytest.mark.parametrize("name", ["tencent_status_waiting.json", "tencent_status_doing.json"])
 def test_poll_pending(name):
-    server = Server(fixture(name))
+    server = Server(asr_fixture(name))
     result = run(server, lambda a: a.poll("522931820"))
     assert result.state == "pending" and result.progress is None
     assert server.body() == {"TaskId": 522931820}
@@ -210,7 +205,7 @@ def test_poll_pending(name):
 
 
 def test_poll_done_keeps_whole_data_object():
-    data = fixture("tencent_status_success.json")
+    data = asr_fixture("tencent_status_success.json")
     server = Server(data)
     result = run(server, lambda a: a.poll("9266418"))
     assert result.state == "done"
@@ -221,13 +216,13 @@ def test_poll_done_keeps_whole_data_object():
 
 
 def test_poll_failed_download_points_to_public_url():
-    result = run(Server(fixture("tencent_status_failed.json")), lambda a: a.poll("522931820"))
+    result = run(Server(asr_fixture("tencent_status_failed.json")), lambda a: a.poll("522931820"))
     assert result.state == "failed" and result.error_kind == "config"
     assert "公网地址" in (result.error or "") and "Failed to download audio file!" in (result.error or "")
 
 
 def test_poll_failed_other_reason():
-    data = fixture("tencent_status_failed.json")
+    data = asr_fixture("tencent_status_failed.json")
     data["Response"]["Data"]["ErrorMsg"] = "audio decode failed"
     result = run(Server(data), lambda a: a.poll("522931820"))
     assert result.state == "failed" and result.error_kind == "provider"
@@ -235,7 +230,7 @@ def test_poll_failed_other_reason():
 
 
 def test_poll_unknown_status_raises():
-    data = fixture("tencent_status_doing.json")
+    data = asr_fixture("tencent_status_doing.json")
     data["Response"]["Data"]["Status"] = 7
     with pytest.raises(AsrError) as e:
         run(Server(data), lambda a: a.poll("522931820"))
@@ -248,7 +243,7 @@ def test_poll_expired_task_fails_without_retry():
 
 
 def test_poll_invalid_task_id_skips_request():
-    server = Server(fixture("tencent_status_doing.json"))
+    server = Server(asr_fixture("tencent_status_doing.json"))
     result = run(server, lambda a: a.poll("not-a-number"))
     assert result.state == "failed" and result.error_kind == "input"
     assert server.requests == []
@@ -256,7 +251,7 @@ def test_poll_invalid_task_id_skips_request():
 
 def test_poll_auth_error_raises():
     with pytest.raises(AsrError) as e:
-        run(Server(fixture("tencent_error_auth.json")), lambda a: a.poll("1"))
+        run(Server(asr_fixture("tencent_error_auth.json")), lambda a: a.poll("1"))
     assert e.value.kind == "auth" and not e.value.retryable
 
 
@@ -327,13 +322,13 @@ def test_http_level_errors(response, kind):
 @pytest.mark.parametrize(
     ("reply", "ok", "fragment"),
     [
-        (fixture("tencent_error_auth.json"), False, "鉴权失败"),
+        (asr_fixture("tencent_error_auth.json"), False, "鉴权失败"),
         (api_error("AuthFailure.SecretIdNotFound"), False, "SecretIdNotFound"),
         (api_error("FailedOperation.ServiceIsolate"), False, "欠费"),
         (api_error("FailedOperation.UserNotRegistered"), False, "未开通"),
         (api_error("FailedOperation.NoSuchTask"), True, "密钥有效"),
         (api_error("InvalidParameter"), True, "密钥有效"),
-        (fixture("tencent_status_failed.json"), True, "密钥有效"),
+        (asr_fixture("tencent_status_failed.json"), True, "密钥有效"),
         (httpx.Response(502, text="bad gateway"), False, "502"),
         (httpx.ConnectError("refused"), False, "连不上腾讯云"),
     ],
@@ -354,7 +349,7 @@ def test_check_credentials_without_keys_skips_request():
 
 
 def test_parse_meeting_result():
-    data = fixture("tencent_status_meeting.json")["Response"]["Data"]
+    data = asr_fixture("tencent_status_meeting.json")["Response"]["Data"]
     segments = TencentMeetingAdapter.parse(data)
     assert segments == [
         AsrSegment(480, 5120, "0", "大家好，今天我们过一下进展。"),
@@ -365,9 +360,9 @@ def test_parse_meeting_result():
 
 
 def test_parse_tolerates_wrapper_and_empty_results():
-    wrapped = fixture("tencent_status_success.json")
+    wrapped = asr_fixture("tencent_status_success.json")
     assert TencentMeetingAdapter.parse(wrapped) == TencentMeetingAdapter.parse(wrapped["Response"]["Data"])
-    assert TencentMeetingAdapter.parse(fixture("tencent_status_failed.json")["Response"]["Data"]) == []
+    assert TencentMeetingAdapter.parse(asr_fixture("tencent_status_failed.json")["Response"]["Data"]) == []
     assert TencentMeetingAdapter.parse({"ResultDetail": None}) == []
     assert TencentMeetingAdapter.parse({}) == []
     # 关闭说话人分离时没有 SpeakerId，统一记成 0 号

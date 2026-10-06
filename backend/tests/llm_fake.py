@@ -9,12 +9,15 @@ reply 返回字符串即正常回答；要模拟思考 token、finish_reason="le
 抛 FakeLlmFailure(status) 模拟接口报错。流式请求（stream=true）按 SSE 分块返回：
 带 stream_options.include_usage 时和 OpenAI 一样，最后一块正文带 finish_reason，
 [DONE] 前再单独发一块用量（choices 为空）。
+
+文件末尾是整理逐字稿的假回答（polish_reply 等），整理相关的测试共用。
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -48,7 +51,7 @@ def _data(event: dict[str, Any]) -> str:
     return "data: " + json.dumps(event, ensure_ascii=False)
 
 
-def _sse(text: str) -> bytes:
+def plain_sse(text: str) -> bytes:
     """老式的流：只有正文块和 [DONE]，没有 finish_reason 和用量。"""
     lines = [_data({"choices": [{"delta": {"content": c}, "index": 0}]}) for c in _chunks(text)]
     lines.append("data: [DONE]")
@@ -79,8 +82,9 @@ def _sse_with_usage(reply: FakeReply, payload: dict[str, Any]) -> bytes:
     return ("\n\n".join(lines) + "\n\n").encode("utf-8")
 
 
-def install_transport(app, handler: Callable[[httpx.Request], httpx.Response]) -> None:
-    """把会议管理器发请求用的传输层换成 handler；要看请求头、模拟 /models 等接口时直接用这个。"""
+def install_transport(app, handler: Callable[[httpx.Request], httpx.Response | Awaitable[httpx.Response]]) -> None:
+    """把会议管理器发请求用的传输层换成 handler（可以是 async 函数）；要看请求头、模拟 /models 等接口、
+    模拟识别服务时直接用这个。测试里替换 manager.http 一律走这里。"""
     transport = httpx.MockTransport(handler)
     manager = app.state.ctx.meetings
     manager.transport = transport
@@ -105,7 +109,7 @@ def install_fake_llm(app, reply: Reply) -> list[dict[str, Any]]:
             if (payload.get("stream_options") or {}).get("include_usage"):
                 content = _sse_with_usage(full, payload)
             else:
-                content = _sse(full.text)
+                content = plain_sse(full.text)
             return httpx.Response(200, content=content, headers={"content-type": "text/event-stream"})
         message: dict[str, Any] = {"role": "assistant", "content": full.text}
         if full.reasoning:
@@ -120,3 +124,33 @@ def install_fake_llm(app, reply: Reply) -> list[dict[str, Any]]:
 
     install_transport(app, handler)
     return calls
+
+
+# ---------- 整理逐字稿的假回答 ----------
+
+FILLERS = ("嗯", "呃", "那个", "就是说")
+TRANSCRIPT_LINE = re.compile(r"^#(\d+) \[(S\d+)\] (.*)$")
+
+
+def tidy(text: str) -> str:
+    for filler in FILLERS:
+        text = text.replace(filler, "")
+    text = text.strip("，, ")
+    return text if text.endswith(("。", "？", "！")) else text + "。"
+
+
+def numbered_lines(messages: list[dict[str, Any]]) -> list[tuple[int, str, str]]:
+    """从整理请求的 <transcript> 块里读出 [(序号, 说话人, 原文)]。"""
+    user = messages[-1]["content"]
+    body = user.split("<transcript>")[1].split("</transcript>")[0]
+    out = []
+    for line in body.strip().splitlines():
+        m = TRANSCRIPT_LINE.match(line)
+        assert m, line
+        out.append((int(m.group(1)), m.group(2), m.group(3)))
+    return out
+
+
+def polish_reply(messages: list[dict[str, Any]], transform=tidy) -> str:
+    """整理请求的标准回答：每句按 transform 整理，编号照抄。"""
+    return "\n".join(f"#{idx} {transform(text)}" for idx, _, text in numbered_lines(messages))

@@ -7,9 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import shutil
 from collections.abc import Awaitable, Callable
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -17,20 +15,15 @@ import pytest
 
 from app.meeting.asr.base import AsrError, AsrSegment, SubmitOptions
 from app.meeting.asr.funasr import FunAsrAdapter
-from tests.conftest import make_wav, upload_audio, wait_meeting
-from tests.llm_fake import install_fake_llm
+from tests.conftest import asr_fixture, make_wav, needs_ffmpeg, update_settings, upload_audio, wait_meeting
+from tests.llm_fake import install_fake_llm, install_transport
 
-FIXTURES = Path(__file__).parent / "fixtures" / "asr"
 DEFAULT_BASE = "https://dashscope.aliyuncs.com/api/v1"
 KEY = "sk-test-0123456789"
 AUDIO_URL = "https://site.example/api/public/meeting-audio/m1/0/tok.mp3"
 RESULT_URL_PREFIX = "https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/"
 
 Handler = Callable[[httpx.Request], httpx.Response]
-
-
-def load(name: str) -> Any:
-    return json.loads((FIXTURES / name).read_text("utf-8"))
 
 
 def run(
@@ -91,7 +84,7 @@ def provider(task_body: dict[str, Any], result: Any = None, result_status: int =
 
 def test_submit_request_shape() -> None:
     task_id, seen = run(
-        lambda r: httpx.Response(200, json=load("funasr_submit.json")),
+        lambda r: httpx.Response(200, json=asr_fixture("funasr_submit.json")),
         submit(SubmitOptions(language="zh", expected_speakers=4, hotwords=["风场"])),
     )
     assert task_id == "c2e5d63b-96e1-4607-bb91-************"
@@ -123,7 +116,7 @@ def test_submit_request_shape() -> None:
 )
 def test_submit_language_and_speaker_count(language: str, expected: int | None, params: dict[str, Any]) -> None:
     _, seen = run(
-        lambda r: httpx.Response(200, json=load("funasr_submit.json")),
+        lambda r: httpx.Response(200, json=asr_fixture("funasr_submit.json")),
         submit(SubmitOptions(language=language, expected_speakers=expected)),
     )
     assert json.loads(seen[0].content)["parameters"] == params
@@ -131,7 +124,7 @@ def test_submit_language_and_speaker_count(language: str, expected: int | None, 
 
 def test_submit_uses_configured_base_and_model() -> None:
     config = {"base_url": "https://ws-1.ap-southeast-1.maas.example/api/v1/ ", "model": "paraformer-v2"}
-    _, seen = run(lambda r: httpx.Response(200, json=load("funasr_submit.json")), submit(), config=config)
+    _, seen = run(lambda r: httpx.Response(200, json=asr_fixture("funasr_submit.json")), submit(), config=config)
     assert str(seen[0].url) == "https://ws-1.ap-southeast-1.maas.example/api/v1/services/audio/asr/transcription"
     assert json.loads(seen[0].content)["model"] == "paraformer-v2"
 
@@ -149,7 +142,7 @@ def test_submit_without_key_or_bad_base_sends_nothing() -> None:
 @pytest.mark.parametrize(
     ("status", "body", "kind", "retryable"),
     [
-        (401, load("funasr_error_invalid_key.json"), "auth", False),
+        (401, asr_fixture("funasr_error_invalid_key.json"), "auth", False),
         (403, {"code": "AccessDenied.Unpurchased", "message": "Access to model denied."}, "auth", False),
         (
             400,
@@ -206,8 +199,8 @@ def test_poll_pending(status: str) -> None:
 
 
 def test_poll_succeeded_downloads_results_without_auth() -> None:
-    result_json = load("funasr_result_diarized.json")
-    result, seen = run(provider(load("funasr_task_succeeded.json"), result_json), poll())
+    result_json = asr_fixture("funasr_result_diarized.json")
+    result, seen = run(provider(asr_fixture("funasr_task_succeeded.json"), result_json), poll())
     assert result.state == "done"
     assert result.raw == [result_json]
     download = seen[1]
@@ -238,7 +231,7 @@ def test_poll_no_speech_reported_on_task() -> None:
 
 
 def test_poll_subtask_download_failed() -> None:
-    result, seen = run(provider(load("funasr_task_failed.json")), poll())
+    result, seen = run(provider(asr_fixture("funasr_task_failed.json")), poll())
     assert result.state == "failed"
     assert result.error_kind == "config"
     assert "FILE_DOWNLOAD_FAILED" in result.error
@@ -271,7 +264,7 @@ def test_poll_unknown_task() -> None:
 
 
 def test_poll_auth_error_raises() -> None:
-    err = run_error(lambda r: httpx.Response(401, json=load("funasr_error_invalid_key.json")), poll())
+    err = run_error(lambda r: httpx.Response(401, json=asr_fixture("funasr_error_invalid_key.json")), poll())
     assert err.kind == "auth" and not err.retryable
     assert "InvalidApiKey" in str(err)
 
@@ -283,7 +276,7 @@ def test_poll_server_error_is_retryable() -> None:
 
 @pytest.mark.parametrize(("status", "retryable"), [(403, False), (404, False), (500, True)])
 def test_poll_result_download_errors(status: int, retryable: bool) -> None:
-    err = run_error(provider(load("funasr_task_succeeded.json"), {"Code": "AccessDenied"}, status), poll())
+    err = run_error(provider(asr_fixture("funasr_task_succeeded.json"), {"Code": "AccessDenied"}, status), poll())
     assert err.kind == "provider"
     assert err.retryable is retryable
 
@@ -292,7 +285,7 @@ def test_poll_result_not_json() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if str(request.url).startswith(RESULT_URL_PREFIX):
             return httpx.Response(200, text="<Error/>")
-        return httpx.Response(200, json=load("funasr_task_succeeded.json"))
+        return httpx.Response(200, json=asr_fixture("funasr_task_succeeded.json"))
 
     err = run_error(handler, poll())
     assert err.kind == "provider" and not err.retryable
@@ -307,14 +300,14 @@ def test_poll_non_dashscope_response_is_config_error() -> None:
 
 
 def test_parse_doc_sample() -> None:
-    raw = load("funasr_result.json")
+    raw = asr_fixture("funasr_result.json")
     expected = [AsrSegment(100, 3820, "0", "Hello world, 这里是阿里巴巴语音实验室。")]
     assert FunAsrAdapter.parse(raw) == expected
     assert FunAsrAdapter.parse([raw]) == expected
 
 
 def test_parse_diarized_skips_empty_and_keeps_order() -> None:
-    segments = FunAsrAdapter.parse([load("funasr_result_diarized.json")])
+    segments = FunAsrAdapter.parse([asr_fixture("funasr_result_diarized.json")])
     assert segments == [
         AsrSegment(300, 4100, "0", "大家好，今天先过一下进度。"),
         AsrSegment(4600, 11250, "1", "我这周把风场数据重新清洗了一遍。"),
@@ -351,7 +344,8 @@ def test_check_credentials_ok_on_unknown_task() -> None:
 
 def test_check_credentials_invalid_key() -> None:
     result, _ = run(
-        lambda r: httpx.Response(401, json=load("funasr_error_invalid_key.json")), lambda a: a.check_credentials()
+        lambda r: httpx.Response(401, json=asr_fixture("funasr_error_invalid_key.json")),
+        lambda a: a.check_credentials(),
     )
     assert not result.ok
     assert "API Key" in result.message and "InvalidApiKey" in result.message
@@ -385,11 +379,10 @@ def test_check_credentials_without_key() -> None:
 # ---------- 接进会议流程 ----------
 
 
-@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="需要 ffmpeg")
+@needs_ffmpeg
 def test_funasr_in_meeting_pipeline(app, admin_client) -> None:
     """管理器经 Fun-ASR 适配器提交、查询、下载并落库：结果 JSON 存盘再读回，说话人编号映射成 S1、S2。"""
-    settings = admin_client.get("/api/admin/settings").json()
-    resp = admin_client.put("/api/admin/settings", json={**settings, "public_base_url": "https://site.example"})
+    resp = update_settings(admin_client, public_base_url="https://site.example")
     assert resp.status_code == 200, resp.text
     resp = admin_client.post(
         "/api/admin/asr/providers",
@@ -408,7 +401,7 @@ def test_funasr_in_meeting_pipeline(app, admin_client) -> None:
     llm = manager.transport
     assert isinstance(llm, httpx.MockTransport)
     submitted: list[dict[str, Any]] = []
-    result_json = load("funasr_result_diarized.json")
+    result_json = asr_fixture("funasr_result_diarized.json")
 
     def handler(request: httpx.Request) -> httpx.Response:
         if str(request.url).startswith(RESULT_URL_PREFIX):
@@ -417,12 +410,10 @@ def test_funasr_in_meeting_pipeline(app, admin_client) -> None:
             return llm.handler(request)
         if request.method == "POST":
             submitted.append(json.loads(request.content))
-            return httpx.Response(200, json=load("funasr_submit.json"))
-        return httpx.Response(200, json=load("funasr_task_succeeded.json"))
+            return httpx.Response(200, json=asr_fixture("funasr_submit.json"))
+        return httpx.Response(200, json=asr_fixture("funasr_task_succeeded.json"))
 
-    transport = httpx.MockTransport(handler)
-    manager.transport = transport
-    manager.http = httpx.AsyncClient(transport=transport)
+    install_transport(app, handler)
 
     meeting = upload_audio(admin_client, make_wav(25), provider_id=provider_id, expected_speakers=2)
     mid = meeting["id"]

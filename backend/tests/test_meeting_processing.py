@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import re
-import shutil
 from typing import Any
 
 import httpx
@@ -17,38 +15,10 @@ from app.meeting import polish, processing, prompts, speakers
 from app.meeting.llm_config import STEPS, PresetSteps, default_step, resolve_meeting_llm
 from app.models import GlossaryTerm, Meeting, MeetingLlmModel, MeetingLlmPreset, MeetingSegment, User
 from app.security import hash_password, new_job_id
-from tests.conftest import add_mock_provider, build_config, make_wav, upload_audio, wait_meeting
-from tests.llm_fake import FakeLlmFailure, FakeReply, install_fake_llm
-
-needs_ffmpeg = pytest.mark.skipif(not shutil.which("ffmpeg"), reason="需要 ffmpeg")
-
-FILLERS = ("嗯", "呃", "那个", "就是说")
-TRANSCRIPT_LINE = re.compile(r"^#(\d+) \[(S\d+)\] (.*)$")
-
+from tests.conftest import add_mock_provider, build_config, make_wav, needs_ffmpeg, upload_audio, wait_meeting
+from tests.llm_fake import FakeLlmFailure, FakeReply, install_fake_llm, numbered_lines, polish_reply, tidy
 
 # ---------- 假大模型的回答 ----------
-
-
-def tidy(text: str) -> str:
-    for filler in FILLERS:
-        text = text.replace(filler, "")
-    text = text.strip("，, ")
-    return text if text.endswith(("。", "？", "！")) else text + "。"
-
-
-def transcript_lines(messages: list[dict[str, Any]]) -> list[tuple[int, str, str]]:
-    user = messages[-1]["content"]
-    body = user.split("<transcript>")[1].split("</transcript>")[0]
-    out = []
-    for line in body.strip().splitlines():
-        m = TRANSCRIPT_LINE.match(line)
-        assert m, line
-        out.append((int(m.group(1)), m.group(2), m.group(3)))
-    return out
-
-
-def polish_reply(messages: list[dict[str, Any]], transform=tidy) -> str:
-    return "\n".join(f"#{idx} {transform(text)}" for idx, _, text in transcript_lines(messages))
 
 
 def is_polish(messages: list[dict[str, Any]]) -> bool:
@@ -173,7 +143,7 @@ def add_preset(app, model_ids: dict[str, int], *, name: str = "默认方案", is
         return preset.id
 
 
-def add_model(app, **extra: Any) -> int:
+def add_model_with_default_preset(app, **extra: Any) -> int:
     """一个会议模型 + 四个用途都用它的默认方案。"""
     model_id = add_llm_model(app, **extra)
     add_preset(app, dict.fromkeys(STEPS, model_id))
@@ -364,7 +334,7 @@ def test_polish_context_and_parallel_chunks(env, monkeypatch):
     assert report.total == len(calls) >= 4 and report.state == "polished"
     later = [c for c in calls if "#0 " not in c["messages"][1]["content"]]
     assert all("<context>" in c["messages"][1]["content"] for c in later), "后面的块带前两句作上下文"
-    first = transcript_lines(later[0]["messages"])[0][0]
+    first = numbered_lines(later[0]["messages"])[0][0]
     context = later[0]["messages"][1]["content"].split("<context>")[1].split("</context>")[0]
     assert f"第{first - 1}句" in context and f"第{first - 2}句" in context
     assert meeting(app, mid).transcript_rev == 1 + report.total, "每块有改动就加一次版本号"
@@ -377,13 +347,13 @@ def test_polish_bad_chunk_retries_then_keeps_raw(env, monkeypatch):
     mid = seed(app, lines)
 
     def reply(messages, payload):
-        numbered = transcript_lines(messages)
+        numbered = numbered_lines(messages)
         if numbered[0][0] == 0:
             return "\n".join(f"#{i} {tidy(t)}" for i, _, t in numbered[1:])  # 总是漏掉第一句
         return polish_reply(messages)
 
     report, calls = polish_with(app, mid, reply)
-    first_chunk = [c for c in calls if transcript_lines(c["messages"])[0][0] == 0]
+    first_chunk = [c for c in calls if numbered_lines(c["messages"])[0][0] == 0]
     assert len(first_chunk) == 2, "整块失败重试一次"
     assert report.failed == 1 and report.state == "partial"
     assert "1 / " in report.warning and "保留了识别原文" in report.warning
@@ -556,7 +526,7 @@ def test_guess_speakers_writes_guesses_only(env):
 
 def test_guess_speakers_json_mode(env):
     app = env
-    add_model(app, json_mode=True)  # JSON 模式是会议模型上的设置
+    add_model_with_default_preset(app, json_mode=True)  # JSON 模式是会议模型上的设置
     mid = seed(app, LINES)
 
     def reply(messages, payload):
@@ -603,7 +573,7 @@ def test_pipeline_without_model(env, monkeypatch):
 
 def test_pipeline_runs_all_steps(env, monkeypatch):
     app = env
-    add_model(app)
+    add_model_with_default_preset(app)
     mid = seed(app, LINES)
     minutes_calls: list[dict[str, Any]] = []
     stub_minutes(monkeypatch, minutes_calls, warning="纪要里有 1 个时间戳超出会议时长，已去掉")
@@ -622,7 +592,7 @@ def test_pipeline_runs_all_steps(env, monkeypatch):
 
 def test_pipeline_fatal_error_skips_rest(env, monkeypatch):
     app = env
-    add_model(app)
+    add_model_with_default_preset(app)
     mid = seed(app, LINES)
     minutes_calls: list[dict[str, Any]] = []
     stub_minutes(monkeypatch, minutes_calls)
@@ -678,7 +648,7 @@ def test_pipeline_fatal_error_only_skips_same_model(env, monkeypatch):
 
 def test_pipeline_survives_crash_in_a_step(env, monkeypatch):
     app = env
-    add_model(app)
+    add_model_with_default_preset(app)
     mid = seed(app, LINES)
 
     async def crash(*args, **kwargs):
@@ -694,7 +664,7 @@ def test_pipeline_survives_crash_in_a_step(env, monkeypatch):
 
 def test_run_op_restores_state(env, monkeypatch):
     app = env
-    add_model(app)
+    add_model_with_default_preset(app)
     mid = seed(app, LINES, minutes_state="generating", minutes_md="# 旧纪要", op="minutes", progress=80)
 
     async def crash(*args, **kwargs):

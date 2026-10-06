@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shutil
 import time
 from datetime import timedelta
 
@@ -17,12 +16,14 @@ from tests.conftest import (
     build_config,
     login,
     make_wav,
+    needs_ffmpeg,
+    update_settings,
     upload_audio,
     wait_meeting,
 )
 from tests.llm_fake import FakeLlmFailure, install_fake_llm
 
-pytestmark = pytest.mark.skipif(not shutil.which("ffmpeg"), reason="需要 ffmpeg")
+pytestmark = needs_ffmpeg
 
 
 @pytest.fixture(autouse=True)
@@ -300,8 +301,7 @@ def test_interrupted_submit_is_not_resubmitted_automatically(tmp_path, monkeypat
 
 def test_duration_limit_checked_after_transcode(app, admin_client):
     add_mock_provider(admin_client)
-    settings = admin_client.get("/api/admin/settings").json()
-    admin_client.put("/api/admin/settings", json={**settings, "max_audio_hours": 1})
+    update_settings(admin_client, max_audio_hours=1)
     from app.meeting import manager as manager_module
 
     original = manager_module.probe

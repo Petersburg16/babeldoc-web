@@ -6,8 +6,7 @@ import brotli
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-
-from .conftest import build_config
+from tests.conftest import build_config
 
 WASM = b"\0asm" + b"x" * 2000
 

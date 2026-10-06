@@ -16,8 +16,7 @@ from app.models import Meeting, MeetingLlmModel, MeetingLlmPreset, MeetingSegmen
 from app.routers import meeting_edit
 from app.security import new_job_id
 from tests.conftest import ADMIN, add_user, login
-from tests.llm_fake import install_fake_llm
-from tests.test_meeting_processing import polish_reply, tidy
+from tests.llm_fake import install_fake_llm, polish_reply, tidy
 
 LINES = [
     ("S1", "嗯大家好我是张老师"),

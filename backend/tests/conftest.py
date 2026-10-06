@@ -3,10 +3,15 @@ from __future__ import annotations
 import io
 import json
 import math
-import struct
+import os
+import shutil
+import sys
 import time
 import wave
-from collections.abc import Iterator
+from array import array
+from collections.abc import Callable, Iterator
+from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,6 +23,43 @@ from app.models import User
 from app.security import hash_password
 
 ADMIN = ("admin", "admin-password")
+# gpt-6-astra 的内置思考档位表，也是中转报错里列出的可用档位
+ASTRA = ["low", "medium", "high", "xhigh", "max"]
+ASR_FIXTURES = Path(__file__).parent / "fixtures" / "asr"
+
+
+def _found(tool: str) -> bool:
+    """和 config.py 一样优先用 BDW_FFMPEG / BDW_FFPROBE 指定的程序。"""
+    return shutil.which(os.environ.get(f"BDW_{tool.upper()}") or tool) is not None
+
+
+needs_ffmpeg = pytest.mark.skipif(not (_found("ffmpeg") and _found("ffprobe")), reason="需要 ffmpeg 和 ffprobe")
+
+
+def asr_fixture(name: str) -> Any:
+    """识别服务的接口样例（fixtures/asr/*.json）。"""
+    return json.loads((ASR_FIXTURES / name).read_text("utf-8"))
+
+
+def wait_until[T](
+    fetch: Callable[[], T],
+    accept: Callable[[T], object] = bool,
+    *,
+    timeout: float = 20,
+    interval: float = 0.05,
+    message: str | Callable[[T], str] = "等待超时",
+) -> T:
+    """每隔 interval 秒取一次 fetch()，accept 通过就返回取到的值；超时抛 AssertionError。
+
+    至少取一次；message 可以是函数，拿最后一次取到的值拼报错。"""
+    deadline = time.monotonic() + timeout
+    while True:
+        value = fetch()
+        if accept(value):
+            return value
+        if time.monotonic() >= deadline:
+            raise AssertionError(message(value) if callable(message) else message)
+        time.sleep(interval)
 
 
 def make_pdf(pages: int = 3) -> bytes:
@@ -61,13 +103,19 @@ def upload(client: TestClient, name: str = "paper.pdf", page_count: int = 3, **o
 
 
 def wait_status(client: TestClient, job_id: str, statuses: set[str], timeout: float = 20) -> dict:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        job = client.get(f"/api/jobs/{job_id}").json()
-        if job["status"] in statuses:
-            return job
-        time.sleep(0.1)
-    raise AssertionError(f"job {job_id} stuck in {job['status']}")
+    return wait_until(
+        lambda: client.get(f"/api/jobs/{job_id}").json(),
+        lambda job: job["status"] in statuses,
+        timeout=timeout,
+        interval=0.1,
+        message=lambda job: f"job {job_id} stuck in {job['status']}",
+    )
+
+
+def update_settings(client: TestClient, **changes: Any):
+    """先取系统设置、改几项再整份存回去；返回响应，由调用方判断成败（有的测试就是要它失败）。"""
+    settings = client.get("/api/admin/settings").json()
+    return client.put("/api/admin/settings", json={**settings, **changes})
 
 
 @pytest.fixture
@@ -118,17 +166,29 @@ def admin_client(app, client) -> TestClient:
 MOCK_PROVIDER = {"kind": "mock", "name": "模拟识别", "config": {"delay_seconds": "0.3"}, "secrets": {"api_key": "k"}}
 
 
-def make_wav(seconds: float = 20.0, rate: int = 16000) -> bytes:
-    """一段 440 Hz 正弦波，ffmpeg 能正常转码。"""
+def wav_bytes(pattern: list[tuple[float, bool]], rate: int = 16000) -> bytes:
+    """16 位单声道 WAV。pattern: [(秒数, 是否有声)]，有声是 440 Hz 正弦波，无声是全零。"""
+    samples = array("h")
+    for seconds, sound in pattern:
+        n = int(seconds * rate)
+        if sound:
+            samples.extend(int(8000 * math.sin(2 * math.pi * 440 * i / rate)) for i in range(n))
+        else:
+            samples.extend([0] * n)
+    if sys.byteorder == "big":  # WAV 是小端
+        samples.byteswap()
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(rate)
-        frames = int(seconds * rate)
-        samples = (int(8000 * math.sin(2 * math.pi * 440 * i / rate)) for i in range(frames))
-        w.writeframes(b"".join(struct.pack("<h", v) for v in samples))
+        w.writeframes(samples.tobytes())
     return buf.getvalue()
+
+
+def make_wav(seconds: float = 20.0, rate: int = 16000) -> bytes:
+    """一段 440 Hz 正弦波，ffmpeg 能正常转码。"""
+    return wav_bytes([(seconds, True)], rate)
 
 
 def add_mock_provider(client: TestClient, **config) -> int:
@@ -154,11 +214,10 @@ def upload_audio(client: TestClient, data: bytes, filename: str = "组会.wav", 
 
 
 def wait_meeting(client: TestClient, meeting_id: str, statuses: set[str], timeout: float = 30) -> dict:
-    deadline = time.monotonic() + timeout
-    meeting: dict = {}
-    while time.monotonic() < deadline:
-        meeting = client.get(f"/api/meetings/{meeting_id}").json()
-        if meeting.get("status") in statuses:
-            return meeting
-        time.sleep(0.1)
-    raise AssertionError(f"meeting {meeting_id} stuck in {meeting.get('status')}: {meeting.get('error')}")
+    return wait_until(
+        lambda: client.get(f"/api/meetings/{meeting_id}").json(),
+        lambda meeting: meeting.get("status") in statuses,
+        timeout=timeout,
+        interval=0.1,
+        message=lambda meeting: f"meeting {meeting_id} stuck in {meeting.get('status')}: {meeting.get('error')}",
+    )

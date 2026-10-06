@@ -1,7 +1,6 @@
 import asyncio
 import hashlib
 import json
-from pathlib import Path
 
 import httpx
 import pytest
@@ -13,18 +12,14 @@ from app.meeting.asr.tingwu import (
     canonical_request,
     signed_headers,
 )
+from tests.conftest import asr_fixture
 
-FIXTURES = Path(__file__).parent / "fixtures" / "asr"
 HOST = "tingwu.cn-beijing.aliyuncs.com"
 TASK_ID = "e8adc0b3bc4b42d898fcadb0a1710635"
 RESULT_URL = "http://speech-swap.oss-cn-zhangjiakou.aliyuncs.com/tingwu/output/transcription.json"
 # 阿里云签名文档里的示例密钥，不是真的
 SECRETS = {"access_key_id": "YourAccessKeyId", "access_key_secret": "YourAccessKeySecret"}
 CONFIG = {"app_key": "test-app-key"}
-
-
-def fixture(name: str):
-    return json.loads((FIXTURES / name).read_text("utf-8"))
 
 
 def run(handler, fn, *, config=None, secrets=None):
@@ -122,7 +117,7 @@ def test_submit_sends_signed_create_task(language, expected, source, count):
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request)
-        return httpx.Response(200, json=fixture("tingwu_create_task.json"))
+        return httpx.Response(200, json=asr_fixture("tingwu_create_task.json"))
 
     opts = SubmitOptions(language=language, expected_speakers=expected)
     task_id = run(handler, lambda a: a.submit("https://example.org/a.mp3", opts))
@@ -166,7 +161,7 @@ def test_custom_endpoint_port_is_signed_as_sent():
 
     def handler(request):
         seen.append(request)
-        return httpx.Response(200, json=fixture("tingwu_create_task.json"))
+        return httpx.Response(200, json=asr_fixture("tingwu_create_task.json"))
 
     config = {**CONFIG, "endpoint": "http://127.0.0.1:8080/"}
     run(handler, lambda a: a.submit("https://example.org/a.mp3", SubmitOptions()), config=config)
@@ -182,7 +177,7 @@ def test_poll_ongoing_is_pending():
 
     def handler(request):
         seen.append(request)
-        return httpx.Response(200, json=fixture("tingwu_task_ongoing.json"))
+        return httpx.Response(200, json=asr_fixture("tingwu_task_ongoing.json"))
 
     result = run(handler, lambda a: a.poll(TASK_ID))
     assert result.state == "pending" and result.progress is None
@@ -195,12 +190,12 @@ def test_poll_ongoing_is_pending():
 
 
 def test_poll_completed_downloads_transcription():
-    transcription = fixture("tingwu_transcription.json")
+    transcription = asr_fixture("tingwu_transcription.json")
     downloads: list[httpx.Request] = []
 
     def handler(request):
         if request.url.host == HOST:
-            return httpx.Response(200, json=fixture("tingwu_task_completed.json"))
+            return httpx.Response(200, json=asr_fixture("tingwu_task_completed.json"))
         assert str(request.url) == RESULT_URL
         downloads.append(request)
         return httpx.Response(200, json=transcription)
@@ -215,7 +210,7 @@ def test_poll_completed_downloads_transcription():
 
 def test_poll_completed_without_result_fails():
     def handler(request):
-        data = fixture("tingwu_task_completed.json")
+        data = asr_fixture("tingwu_task_completed.json")
         data["Data"]["Result"] = {}
         return httpx.Response(200, json=data)
 
@@ -226,7 +221,7 @@ def test_poll_completed_without_result_fails():
 def test_poll_expired_result_link_is_not_retried():
     def handler(request):
         if request.url.host == HOST:
-            return httpx.Response(200, json=fixture("tingwu_task_completed.json"))
+            return httpx.Response(200, json=asr_fixture("tingwu_task_completed.json"))
         return httpx.Response(403, text="<Error>AccessDenied</Error>")
 
     with pytest.raises(AsrError) as e:
@@ -236,7 +231,7 @@ def test_poll_expired_result_link_is_not_retried():
 
 def test_poll_failed_maps_error_code():
     def handler(request):
-        return httpx.Response(200, json=fixture("tingwu_task_failed.json"))
+        return httpx.Response(200, json=asr_fixture("tingwu_task_failed.json"))
 
     result = run(handler, lambda a: a.poll(TASK_ID))
     assert result.state == "failed"
@@ -301,7 +296,7 @@ def test_error_codes_are_classified_by_body_code(status, code, kind, retryable):
 
 def test_auth_fixture_at_http_404_is_auth_error():
     def handler(request):
-        return httpx.Response(404, json=fixture("tingwu_error_auth.json"))
+        return httpx.Response(404, json=asr_fixture("tingwu_error_auth.json"))
 
     with pytest.raises(AsrError) as e:
         run(handler, lambda a: a.poll(TASK_ID))
@@ -391,7 +386,7 @@ def test_check_credentials_network_error():
 
 
 def test_parse_joins_words_into_sentences():
-    segments = TingwuAdapter.parse(fixture("tingwu_transcription.json"))
+    segments = TingwuAdapter.parse(asr_fixture("tingwu_transcription.json"))
     assert segments == [
         AsrSegment(4970, 6900, "1", "您好，我是张老师。"),
         AsrSegment(7200, 9300, "1", "我们用Python 3跑一下。"),

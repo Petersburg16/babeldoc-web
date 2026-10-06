@@ -4,8 +4,7 @@ import pytest
 
 from app import cli
 from app.main import create_app
-
-from .conftest import add_user, build_config
+from tests.conftest import add_user, build_config
 
 
 def test_create_admin_then_delete_user(tmp_path, monkeypatch, capsys):
