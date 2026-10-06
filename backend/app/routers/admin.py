@@ -4,7 +4,7 @@ import asyncio
 import os
 from datetime import timedelta
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 import psutil
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -15,16 +15,15 @@ from ..db import utcnow
 from ..defaults import ensure_single_default
 from ..deps import AdminDep, AppContext, CtxDep, DbDep, require_admin
 from ..engine import detect_engine_version
-from ..job_ops import cancel_job, delete_job, retry_job
+from ..job_ops import JobFilter, cancel_job, delete_job, job_out, retry_job, status_conditions
 from ..llm_check import check_chat, list_remote_models
-from ..models import JOB_ACTIVE, JOB_BILLABLE, AuthSession, Invite, Job, Meeting, ModelProfile, User
+from ..models import JOB_BILLABLE, AuthSession, Invite, Job, Meeting, ModelProfile, User
 from ..schemas import (
     AdminUserIn,
     AdminUserOut,
     AdminUserPatch,
     InviteIn,
     InviteOut,
-    JobOut,
     JobPage,
     ModelAdminOut,
     ModelIn,
@@ -485,19 +484,13 @@ async def probe_models(body: ModelProbeIn, db: DbDep, ctx: CtxDep) -> dict[str, 
 def list_all_jobs(
     db: DbDep,
     ctx: CtxDep,
-    status: Annotated[Literal["all", "active", "succeeded", "failed"], Query()] = "all",
+    status: Annotated[JobFilter, Query()] = "all",
     user_id: Annotated[int | None, Query()] = None,
     q: Annotated[str | None, Query(max_length=100)] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> JobPage:
-    conditions = [Job.deleted_at.is_(None)]
-    if status == "active":
-        conditions.append(Job.status.in_(JOB_ACTIVE))
-    elif status == "succeeded":
-        conditions.append(Job.status == "succeeded")
-    elif status == "failed":
-        conditions.append(Job.status.in_(("failed", "canceled")))
+    conditions = [Job.deleted_at.is_(None), *status_conditions(status)]
     if user_id:
         conditions.append(Job.user_id == user_id)
     if q:
@@ -507,13 +500,7 @@ def list_all_jobs(
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
     rows = db.execute(base.order_by(Job.created_at.desc()).limit(limit).offset(offset)).all()
     positions = queue_positions(db)
-    items = []
-    for job, username in rows:
-        out = JobOut.of(job, position=positions.get(job.id), username=username)
-        live = ctx.manager.live_progress(job.id) if job.status == "running" else None
-        if live:
-            out.progress, out.stage = round(live[0], 2), live[1]
-        items.append(out)
+    items = [job_out(ctx, job, positions.get(job.id), username) for job, username in rows]
     return JobPage(items=items, total=total)
 
 

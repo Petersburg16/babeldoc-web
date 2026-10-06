@@ -1,19 +1,44 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import HTTPException
-from sqlalchemy import func, select, update
+from sqlalchemy import ColumnElement, func, select, update
 from sqlalchemy.orm import Session
 
 from .db import utcnow
 from .defaults import default_or_first
 from .deps import AppContext
 from .models import JOB_ACTIVE, Job, ModelProfile, User
+from .schemas import JobOut
 from .services import effective_quota, job_dir, month_pages, remove_job_files
 from .settings_store import load_settings
+
+# 任务列表的状态筛选；“失败”一栏也包括已取消的
+JobFilter = Literal["all", "active", "succeeded", "failed"]
 
 
 def default_model(db: Session) -> ModelProfile | None:
     return default_or_first(db, select(ModelProfile).where(ModelProfile.enabled.is_(True)), ModelProfile)
+
+
+def status_conditions(status: JobFilter) -> list[ColumnElement[bool]]:
+    if status == "active":
+        return [Job.status.in_(JOB_ACTIVE)]
+    if status == "succeeded":
+        return [Job.status == "succeeded"]
+    if status == "failed":
+        return [Job.status.in_(("failed", "canceled"))]
+    return []
+
+
+def job_out(ctx: AppContext, job: Job, position: int | None = None, username: str | None = None) -> JobOut:
+    """接口输出；进行中的任务用内存里的实时进度覆盖库里（几秒才写一次）的值。"""
+    out = JobOut.of(job, position=position, username=username)
+    live = ctx.manager.live_progress(job.id) if job.status == "running" else None
+    if live:
+        out.progress, out.stage = round(live[0], 2), live[1]
+    return out
 
 
 def check_capacity(db: Session, owner: User, new_pages: int, new_jobs: int) -> None:

@@ -14,10 +14,19 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import utcnow
-from ..deps import AppContext, CtxDep, DbDep, UserDep
-from ..job_ops import cancel_job, check_capacity, default_model, delete_job, retry_job
+from ..deps import CtxDep, DbDep, UserDep
+from ..job_ops import (
+    JobFilter,
+    cancel_job,
+    check_capacity,
+    default_model,
+    delete_job,
+    job_out,
+    retry_job,
+    status_conditions,
+)
 from ..languages import LANGUAGE_CODES
-from ..models import JOB_ACTIVE, Job, ModelProfile, User
+from ..models import Job, ModelProfile, User
 from ..pages import count_pages, normalize_pages, parse_pages
 from ..schemas import JobOptions, JobOut, JobPage
 from ..security import new_job_id
@@ -95,34 +104,20 @@ def own_job(db: Session, user: User, job_id: str) -> Job:
     return job
 
 
-def to_out(ctx: AppContext, job: Job, position: int | None = None) -> JobOut:
-    out = JobOut.of(job, position=position)
-    live = ctx.manager.live_progress(job.id) if job.status == "running" else None
-    if live:
-        out.progress, out.stage = round(live[0], 2), live[1]
-    return out
-
-
 @router.get("")
 def list_jobs(
     user: UserDep,
     db: DbDep,
     ctx: CtxDep,
-    status: Annotated[Literal["all", "active", "succeeded", "failed"], Query()] = "all",
+    status: Annotated[JobFilter, Query()] = "all",
     limit: Annotated[int, Query(ge=1, le=100)] = 30,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> JobPage:
-    conditions = [Job.user_id == user.id, Job.deleted_at.is_(None)]
-    if status == "active":
-        conditions.append(Job.status.in_(JOB_ACTIVE))
-    elif status == "succeeded":
-        conditions.append(Job.status == "succeeded")
-    elif status == "failed":
-        conditions.append(Job.status.in_(("failed", "canceled")))
+    conditions = [Job.user_id == user.id, Job.deleted_at.is_(None), *status_conditions(status)]
     total = db.scalar(select(func.count(Job.id)).where(*conditions)) or 0
     jobs = db.scalars(select(Job).where(*conditions).order_by(Job.created_at.desc()).limit(limit).offset(offset)).all()
     positions = queue_positions(db)
-    return JobPage(items=[to_out(ctx, j, positions.get(j.id)) for j in jobs], total=total)
+    return JobPage(items=[job_out(ctx, j, positions.get(j.id)) for j in jobs], total=total)
 
 
 @router.post("", status_code=201)
@@ -227,13 +222,13 @@ def create_jobs(
     ctx.manager.wake()
     ctx.manager.broadcast_queue()
     positions = queue_positions(db)
-    return [to_out(ctx, job, positions.get(job.id)) for job in jobs]
+    return [job_out(ctx, job, positions.get(job.id)) for job in jobs]
 
 
 @router.get("/{job_id}")
 def get_job(job_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> JobOut:
     job = own_job(db, user, job_id)
-    return to_out(ctx, job, queue_positions(db).get(job.id))
+    return job_out(ctx, job, queue_positions(db).get(job.id))
 
 
 @router.post("/{job_id}/cancel")
@@ -241,7 +236,7 @@ def cancel(job_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> JobOut:
     job = own_job(db, user, job_id)
     cancel_job(db, ctx, job)
     db.refresh(job)
-    return to_out(ctx, job)
+    return job_out(ctx, job)
 
 
 @router.post("/{job_id}/retry")
@@ -249,7 +244,7 @@ def retry(job_id: str, user: UserDep, db: DbDep, ctx: CtxDep) -> JobOut:
     job = own_job(db, user, job_id)
     retry_job(db, ctx, job)
     db.refresh(job)
-    return to_out(ctx, job, queue_positions(db).get(job.id))
+    return job_out(ctx, job, queue_positions(db).get(job.id))
 
 
 @router.delete("/{job_id}", status_code=204)
