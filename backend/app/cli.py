@@ -13,7 +13,7 @@ from pathlib import Path
 
 from sqlalchemy import func, select
 
-from . import pdf_asset_sync
+from . import db_backup, pdf_asset_sync
 from .config import PROJECT_DIR, load_config
 from .db import init_db, make_engine, make_sessionmaker
 from .engine import build_spec, child_env, engine_command, spawn
@@ -179,6 +179,21 @@ def pdf_assets_sync(args: argparse.Namespace) -> None:
     pdf_asset_sync.sync(lock, dest, seeds=[Path(s) for s in args.seed], registry=args.registry, keep=args.keep)
 
 
+def _print_summary(result: tuple[bool, str]) -> None:
+    ok, summary = result
+    print(summary)
+    if not ok:
+        sys.exit(1)
+
+
+def db_snapshot(args: argparse.Namespace) -> None:
+    _print_summary(db_backup.snapshot(Path(args.src), Path(args.dest)))
+
+
+def db_verify(args: argparse.Namespace) -> None:
+    _print_summary(db_backup.verify(Path(args.db), Path(args.key) if args.key else None))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     sub = parser.add_subparsers(required=True)
@@ -216,6 +231,17 @@ def main() -> None:
     q.add_argument("--registry", help="npm 源，默认 https://registry.npmjs.org/，也可用 BDW_NPM_REGISTRY")
     q.add_argument("--keep", type=int, default=2, help="每个引擎保留最近几个版本，默认 2")
     q.set_defaults(func=pdf_assets_sync)
+
+    p = sub.add_parser("db", help="备份用：数据库快照与校验（路径都由参数给出，不读配置、不改动数据库）")
+    psub = p.add_subparsers(required=True)
+    q = psub.add_parser("snapshot", help="用在线备份接口把数据库复制一份并校验，服务运行中也可以")
+    q.add_argument("src")
+    q.add_argument("dest")
+    q.set_defaults(func=db_snapshot)
+    q = psub.add_parser("verify", help="校验数据库；给了 secret.key 就统计它能解开几个加密存放的密钥")
+    q.add_argument("db")
+    q.add_argument("key", nargs="?")
+    q.set_defaults(func=db_verify)
 
     args = parser.parse_args()
     args.func(args)

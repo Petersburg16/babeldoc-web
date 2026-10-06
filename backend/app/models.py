@@ -309,3 +309,7 @@ class GlossaryTerm(Base):
     updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), default=None)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+
+# 用 secret.key 加密存放的列：备份校验按这里统计本机密钥能解开几个，新增加密列时记得加进来
+ENCRYPTED_COLUMNS = (ModelProfile.api_key_enc, AsrProvider.secret_enc, MeetingLlmModel.api_key_enc)
