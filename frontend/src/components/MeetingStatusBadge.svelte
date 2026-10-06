@@ -2,6 +2,7 @@
   import { Ban, CircleCheck, CircleX, Clock, LoaderCircle } from '../lib/icons';
   import { statusLabel } from '../lib/meeting/format';
   import type { MeetingStatus } from '../lib/meeting/types';
+  import Badge from './Badge.svelte';
 
   let { status }: { status: MeetingStatus } = $props();
 
@@ -18,10 +19,6 @@
   } as const;
 
   const variant = $derived(variants[status] ?? variants.queued);
-  const Icon = $derived(variant.icon);
 </script>
 
-<span class="inline-flex h-6 items-center gap-1 rounded-full pr-2.5 pl-2 text-[12px] font-medium whitespace-nowrap {variant.cls}">
-  <Icon class="size-3.5 {variant.spin ? 'animate-spin' : ''}" />
-  {statusLabel(status)}
-</span>
+<Badge icon={variant.icon} label={statusLabel(status)} tone={variant.cls} spin={variant.spin} />

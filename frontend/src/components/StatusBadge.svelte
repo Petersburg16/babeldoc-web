@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Ban, CircleCheck, CircleX, Clock, LoaderCircle } from '../lib/icons';
   import type { JobStatus } from '../lib/types';
+  import Badge from './Badge.svelte';
 
   let { status }: { status: JobStatus } = $props();
 
@@ -13,10 +14,6 @@
   } as const;
 
   const variant = $derived(variants[status]);
-  const Icon = $derived(variant.icon);
 </script>
 
-<span class="inline-flex h-6 items-center gap-1 rounded-full pr-2.5 pl-2 text-[12px] font-medium whitespace-nowrap {variant.cls}">
-  <Icon class="size-3.5 {variant.spin ? 'animate-spin' : ''}" />
-  {variant.label}
-</span>
+<Badge icon={variant.icon} label={variant.label} tone={variant.cls} spin={variant.spin} />
