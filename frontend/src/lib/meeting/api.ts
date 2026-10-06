@@ -1,4 +1,4 @@
-import { ApiError, describeDetail, notifyUnauthorized, request } from '../api';
+import { ApiError, describeDetail, GUARD_HEADERS, http, notifyUnauthorized, qs, xhrSend } from '../api';
 import type {
   ChatMessage,
   EffortChoice,
@@ -27,14 +27,11 @@ import type {
   Segment,
 } from './types';
 
-const get = <T>(url: string) => request<T>('GET', url);
-const post = <T>(url: string, body?: unknown) => request<T>('POST', url, body ?? {});
-const patch = <T>(url: string, body: unknown) => request<T>('PATCH', url, body);
-const del = (url: string) => request<void>('DELETE', url);
+const { get, post, patch, del } = http;
 
 export const meetingApi = {
   options: () => get<MeetingOptions>('/api/meetings/options'),
-  list: (limit: number, offset: number) => get<MeetingPage>(`/api/meetings?limit=${limit}&offset=${offset}`),
+  list: (limit: number, offset: number) => get<MeetingPage>(`/api/meetings${qs({ limit, offset })}`),
   get: (id: string) => get<MeetingDetail>(`/api/meetings/${id}`),
   patch: (
     id: string,
@@ -45,7 +42,7 @@ export const meetingApi = {
   remove: (id: string) => del(`/api/meetings/${id}`),
   segments: (id: string) => get<Segment[]>(`/api/meetings/${id}/segments`),
 
-  // 编辑（M4）：改文字会让纪要标记为过期；改名、合并只换显示的名字，不需要重新生成纪要
+  // 编辑：改文字会让纪要标记为过期；改名、合并只换显示的名字，不需要重新生成纪要
   editSegment: (id: string, idx: number, body: { text?: string; speaker?: string }) =>
     patch<Segment>(`/api/meetings/${id}/segments/${idx}`, body),
   revertSegment: (id: string, idx: number) => post<Segment>(`/api/meetings/${id}/segments/${idx}/revert`),
@@ -67,7 +64,7 @@ export const meetingApi = {
   ) =>
     post<Meeting>(`/api/meetings/${id}/ops/${op}`, body),
 
-  // 对话（M5）
+  // 对话
   messages: (id: string) => get<ChatMessage[]>(`/api/meetings/${id}/messages`),
   clearMessages: (id: string) => del(`/api/meetings/${id}/messages`),
 
@@ -116,34 +113,17 @@ export function audioUrl(id: string) {
   return `/api/meetings/${id}/audio`;
 }
 
-/** 导出（M7）：直接用作下载链接 */
+/** 导出：直接用作下载链接 */
 export function exportUrl(id: string, format: ExportFormat, content: ExportContent = 'both') {
   return `/api/meetings/${id}/export?format=${format}&content=${content}`;
 }
 
-function putPart(url: string, blob: Blob, onProgress: (loaded: number) => void, signal?: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('PUT', url);
-    xhr.setRequestHeader('X-Requested-With', 'babeldoc-web');
-    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-    xhr.upload.onprogress = (e) => onProgress(e.loaded);
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) return resolve();
-      if (xhr.status === 401) notifyUnauthorized();
-      let detail = '';
-      try {
-        detail = describeDetail(JSON.parse(xhr.responseText)?.detail);
-      } catch {
-        /* 没有 JSON 正文 */
-      }
-      reject(new ApiError(detail || `上传失败（${xhr.status}）`, xhr.status));
-    };
-    xhr.onerror = () => reject(new ApiError('网络连接失败', 0));
-    xhr.onabort = () => reject(new DOMException('已取消', 'AbortError'));
-    if (signal?.aborted) return reject(new DOMException('已取消', 'AbortError'));
-    signal?.addEventListener('abort', () => xhr.abort(), { once: true });
-    xhr.send(blob);
+async function putPart(url: string, blob: Blob, onProgress: (loaded: number) => void, signal?: AbortSignal) {
+  await xhrSend('PUT', url, blob, {
+    headers: { 'Content-Type': 'application/octet-stream' },
+    onProgress: (e) => onProgress(e.loaded),
+    signal,
+    networkError: '网络连接失败',
   });
 }
 
@@ -189,7 +169,7 @@ export async function uploadMeeting(
     signal?.throwIfAborted();
   } catch (e) {
     // 传不完就把这条“上传中”的记录删掉，免得列表里留一条半截的
-    void request('DELETE', `/api/meetings/${id}`).catch(() => {});
+    void del(`/api/meetings/${id}`).catch(() => {});
     throw e;
   }
   return completeUpload(id);
@@ -202,7 +182,7 @@ async function completeUpload(id: string): Promise<Meeting> {
       return await post<Meeting>(`/api/meetings/${id}/upload/complete`);
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) {
-        void request('DELETE', `/api/meetings/${id}`).catch(() => {});
+        void del(`/api/meetings/${id}`).catch(() => {});
         throw e;
       }
       const current = await get<MeetingDetail>(`/api/meetings/${id}`).catch(() => null);
@@ -225,7 +205,7 @@ export interface ChatHandlers {
 }
 
 /**
- * 对话（M5）：POST /api/meetings/{id}/chat，返回 text/event-stream。
+ * 对话：POST /api/meetings/{id}/chat，返回 text/event-stream。
  * 事件：start {user_message}、delta {text}、done {message}、error {message}；首字前每 10 秒一个注释心跳。
  */
 export async function streamChat(id: string, content: string, handlers: ChatHandlers, signal?: AbortSignal) {
@@ -233,7 +213,7 @@ export async function streamChat(id: string, content: string, handlers: ChatHand
   try {
     res = await fetch(`/api/meetings/${id}/chat`, {
       method: 'POST',
-      headers: { 'X-Requested-With': 'babeldoc-web', 'Content-Type': 'application/json' },
+      headers: { ...GUARD_HEADERS, 'Content-Type': 'application/json' },
       credentials: 'same-origin',
       body: JSON.stringify({ content }),
       signal,

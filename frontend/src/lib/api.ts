@@ -27,7 +27,7 @@ export function onUnauthorized(handler: () => void) {
   unauthorizedHandler = handler;
 }
 
-/** 给不经过 request() 的请求（分片上传、流式对话）用：遇到 401 时同样回到登录页 */
+/** 给不经过 request() / xhrSend() 的请求（流式对话）用：遇到 401 时同样回到登录页 */
 export function notifyUnauthorized() {
   unauthorizedHandler?.();
 }
@@ -80,8 +80,11 @@ export function describeDetail(detail: unknown): string {
   return '';
 }
 
-export async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = { 'X-Requested-With': 'babeldoc-web' };
+/** 写操作必须带的头（后端 GuardMiddleware 检查它）；所有请求都从这里取，不要另写字面量 */
+export const GUARD_HEADERS: Readonly<Record<string, string>> = { 'X-Requested-With': 'babeldoc-web' };
+
+async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = { ...GUARD_HEADERS };
   const init: RequestInit = { method, headers, credentials: 'same-origin' };
   if (body instanceof FormData) {
     init.body = body;
@@ -110,31 +113,73 @@ const patch = <T>(url: string, body: unknown) => request<T>('PATCH', url, body);
 const put = <T>(url: string, body: unknown) => request<T>('PUT', url, body);
 const del = (url: string) => request<void>('DELETE', url);
 
-function qs(params: Record<string, string | number | null | undefined>) {
+/** 各功能模块的接口封装共用这几个请求函数 */
+export const http = { get, post, patch, put, del };
+
+/** 拼查询串：跳过空值，没有参数时返回空字符串 */
+export function qs(params: Record<string, string | number | null | undefined>) {
   const search = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v !== null && v !== undefined && v !== '') search.set(k, String(v));
   const s = search.toString();
   return s ? `?${s}` : '';
 }
 
-export function uploadJobs(form: FormData, onProgress: (ratio: number) => void): Promise<Job[]> {
-  return new Promise((resolve, reject) => {
+interface XhrOptions {
+  /** 额外的请求头（防跨站头总会带上） */
+  headers?: Record<string, string>;
+  onProgress?: (e: ProgressEvent) => void;
+  signal?: AbortSignal;
+  /** 网络错误时的提示 */
+  networkError: string;
+  /** 按状态码和响应正文给出专门的提示；返回空时用接口的错误说明或“上传失败（状态码）” */
+  errorMessage?: (status: number, data: unknown) => string | undefined;
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null; // 没有 JSON 正文
+  }
+}
+
+/**
+ * 需要上传进度的请求用 XHR 发：同样带防跨站头、遇到 401 回登录页、用 describeDetail 解析错误。
+ * 成功时返回解析后的 JSON 正文（没有则为 null）；传了 signal 才能中途取消，取消时抛 AbortError。
+ */
+export function xhrSend(method: string, url: string, body: XMLHttpRequestBodyInit, options: XhrOptions) {
+  const { signal } = options;
+  return new Promise<unknown>((resolve, reject) => {
+    if (signal?.aborted) return reject(new DOMException('已取消', 'AbortError'));
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/jobs');
-    xhr.setRequestHeader('X-Requested-With', 'babeldoc-web');
-    xhr.responseType = 'json';
-    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+    xhr.open(method, url);
+    for (const [k, v] of Object.entries({ ...GUARD_HEADERS, ...options.headers })) xhr.setRequestHeader(k, v);
+    if (options.onProgress) xhr.upload.onprogress = options.onProgress;
     xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response as Job[]);
-      else {
-        if (xhr.status === 401) unauthorizedHandler?.();
-        const msg = describeDetail(xhr.response?.detail) || `上传失败（${xhr.status}）`;
-        reject(new ApiError(xhr.status === 413 && !xhr.response ? '文件太大，超过了服务器限制' : msg, xhr.status));
-      }
+      const data = parseJson(xhr.responseText);
+      if (xhr.status >= 200 && xhr.status < 300) return resolve(data);
+      if (xhr.status === 401) unauthorizedHandler?.();
+      const detail = (data as { detail?: unknown } | null)?.detail;
+      const message = options.errorMessage?.(xhr.status, data) || describeDetail(detail) || `上传失败（${xhr.status}）`;
+      reject(new ApiError(message, xhr.status));
     };
-    xhr.onerror = () => reject(new ApiError('网络连接失败，上传中断', 0));
-    xhr.send(form);
+    xhr.onerror = () => reject(new ApiError(options.networkError, 0));
+    if (signal) {
+      xhr.onabort = () => reject(new DOMException('已取消', 'AbortError'));
+      signal.addEventListener('abort', () => xhr.abort(), { once: true });
+    }
+    xhr.send(body);
   });
+}
+
+export async function uploadJobs(form: FormData, onProgress: (ratio: number) => void): Promise<Job[]> {
+  const created = await xhrSend('POST', '/api/jobs', form, {
+    onProgress: (e) => e.lengthComputable && onProgress(e.loaded / e.total),
+    networkError: '网络连接失败，上传中断',
+    // 被代理层拦下的 413 没有 JSON 正文
+    errorMessage: (status, data) => (status === 413 && !data ? '文件太大，超过了服务器限制' : undefined),
+  });
+  return created as Job[];
 }
 
 export const api = {
