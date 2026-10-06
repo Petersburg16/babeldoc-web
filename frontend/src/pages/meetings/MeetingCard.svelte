@@ -1,5 +1,4 @@
 <script lang="ts">
-  import ArrowRight from '@lucide/svelte/icons/arrow-right';
   import MeetingStatusBadge from '../../components/MeetingStatusBadge.svelte';
   import Menu from '../../components/Menu.svelte';
   import ProgressBar from '../../components/ProgressBar.svelte';
@@ -17,6 +16,7 @@
   } from '../../lib/icons';
   import { meetingApi } from '../../lib/meeting/api';
   import { errorKindLabel, fillSpeakers, isActive, spoken, stageLabel, statusLabel } from '../../lib/meeting/format';
+  import { ArrowRight } from '../../lib/meeting/icons';
   import type { Meeting, MeetingStatus } from '../../lib/meeting/types';
   import { meetings } from '../../lib/meetings.svelte';
   import { toast } from '../../lib/toast.svelte';

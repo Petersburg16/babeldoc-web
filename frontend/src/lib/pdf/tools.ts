@@ -1,16 +1,15 @@
 // PDF 工具清单：顺序即工具页里的展示顺序。每个工具的界面单独按需加载，
 // engines 列出它运行时需要的引擎（体积与缓存状态见 engines.ts），首页据此提示首次使用要下载多少。
 import type { Component } from 'svelte';
+import { FileText, Lock } from '../icons';
 import {
   Combine,
   Droplets,
   FileImage,
   FileSpreadsheet,
-  FileText,
   Hash,
   Images,
   LayoutGrid,
-  Lock,
   LockOpen,
   PackageCheck,
   RotateCw,

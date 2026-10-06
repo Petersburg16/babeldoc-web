@@ -3,10 +3,10 @@
   import { SvelteMap } from 'svelte/reactivity';
   import ProgressBar from '../../../components/ProgressBar.svelte';
   import { confirm } from '../../../lib/confirm.svelte';
-  import { CircleAlert, Copy, LoaderCircle, Trash2 } from '../../../lib/icons';
+  import { CircleAlert, Copy, LoaderCircle, RotateCcw, Trash2 } from '../../../lib/icons';
   import { engines } from '../../../lib/pdf/engines.svelte';
   import { pdfBlob, renamed, type Report } from '../../../lib/pdf/files';
-  import { ArrowDownUp, FilePlus, RotateCcw, RotateCw, Undo2 } from '../../../lib/pdf/icons';
+  import { ArrowDownUp, FilePlus, RotateCw, Undo2 } from '../../../lib/pdf/icons';
   import { Cancelled } from '../../../lib/pdf/input';
   import type { PageInfo, PageSource, Slot } from '../../../lib/pdf/ops/organize';
   import { passwordState } from '../../../lib/pdf/password.svelte';

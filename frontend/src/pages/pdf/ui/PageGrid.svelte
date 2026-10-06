@@ -37,8 +37,8 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import { flip } from 'svelte/animate';
-  import { Check, Copy, Trash2 } from '../../../lib/icons';
-  import { ChevronLeft, ChevronRight, RotateCcw, RotateCw } from '../../../lib/pdf/icons';
+  import { Check, Copy, RotateCcw, Trash2 } from '../../../lib/icons';
+  import { ChevronLeft, ChevronRight, RotateCw } from '../../../lib/pdf/icons';
 
   interface Props {
     items: Slot[];
