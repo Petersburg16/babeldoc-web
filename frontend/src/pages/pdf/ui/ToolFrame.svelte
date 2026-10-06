@@ -3,15 +3,14 @@
   import ProgressBar from '../../../components/ProgressBar.svelte';
   import { bytes, errorText, spaced } from '../../../lib/format';
   import { CircleAlert, LoaderCircle, X } from '../../../lib/icons';
-  import { type EngineId, engines } from '../../../lib/pdf/engines.svelte';
+  import { engines } from '../../../lib/pdf/engines.svelte';
   import type { OutputFile, Report } from '../../../lib/pdf/files';
   import { CloudDownload } from '../../../lib/pdf/icons';
   import { Cancelled } from '../../../lib/pdf/input';
+  import { currentTool } from '../../../lib/pdf/tools';
   import ResultPanel from './ResultPanel.svelte';
 
   interface Props {
-    /** 运行前要准备好的引擎（第一次会下载，之后读缓存） */
-    engines: EngineId[];
     runLabel: string;
     canRun: boolean;
     /** 不能运行时的提示，例如“至少选择两个文件” */
@@ -35,7 +34,6 @@
   }
 
   let {
-    engines: needed,
     runLabel,
     canRun,
     blocked = '',
@@ -56,6 +54,8 @@
   let outputs = $state<OutputFile[]>([]);
   let controller: AbortController | null = null;
 
+  /** 运行前要准备好的引擎（第一次会下载，之后读缓存），取自 tools.ts 的工具清单 */
+  const needed = currentTool().engines;
   const pending = $derived(engines.pendingBytes(needed));
   const busy = $derived(phase !== 'idle');
   const engineLabel = $derived(spaced(engines.label(needed)));

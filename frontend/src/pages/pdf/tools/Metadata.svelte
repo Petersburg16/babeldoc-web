@@ -8,6 +8,7 @@
   import { pdfBlob, renamed, type Report } from '../../../lib/pdf/files';
   import { Cancelled, unlockPdf } from '../../../lib/pdf/input';
   import type { MetadataEdit, PdfMetadata, TextField } from '../../../lib/pdf/ops/metadata';
+  import { currentTool } from '../../../lib/pdf/tools';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   const TEXT: { id: TextField; label: string; wide?: boolean; hint?: string }[] = [
@@ -38,6 +39,9 @@
     encrypted: boolean;
     meta: PdfMetadata;
   }
+
+  // 选好文件就要用引擎，不等点开始；与 ToolFrame 一样取自工具清单
+  const ENGINES = currentTool().engines;
 
   let files = $state<File[]>([]);
   let source = $state.raw<Source | null>(null);
@@ -142,7 +146,7 @@
         loadError = `「${file.name}」是空文件，请重新选择`;
         return;
       }
-      await engines.ensure(['qpdf']);
+      await engines.ensure(ENGINES);
       const { readMetadata } = await import('../../../lib/pdf/ops/metadata');
       const { bytes, encrypted } = await unlockPdf(file);
       const meta = await readMetadata(bytes);
@@ -192,7 +196,6 @@
 
 <ToolFrame
   resetKey={files}
-  engines={['qpdf']}
   runLabel={clearAll ? '清除全部元数据' : '保存属性'}
   canRun={!!source && !loading && (clearAll || (!!edit && !customError))}
   {blocked}

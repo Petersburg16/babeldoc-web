@@ -126,7 +126,6 @@
 
 <ToolFrame
   resetKey={files}
-  engines={['libreoffice']}
   runLabel={usable > 1 ? `转换 ${usable} 个文件` : '转为 PDF'}
   canRun={isolated && usable > 0}
   {blocked}

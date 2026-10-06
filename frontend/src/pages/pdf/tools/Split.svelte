@@ -66,7 +66,6 @@
 
 <ToolFrame
   resetKey={files}
-  engines={['qpdf']}
   runLabel={mode === 'extract' ? '提取页面' : planned > 1 ? `拆分为 ${planned} 个文件` : '开始拆分'}
   canRun={!!file && ready}
   blocked={!file

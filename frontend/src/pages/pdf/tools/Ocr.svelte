@@ -73,7 +73,6 @@
 
 <ToolFrame
   resetKey={files}
-  engines={['qpdf', 'render', 'ocr']}
   runLabel="开始识别"
   canRun={files.length === 1 && !badRange}
   blocked={badRange ? '页码范围写法有误' : '选择一个扫描版 PDF'}

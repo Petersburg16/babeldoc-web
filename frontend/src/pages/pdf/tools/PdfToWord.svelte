@@ -66,7 +66,6 @@
 
 <ToolFrame
   resetKey={files}
-  engines={['qpdf', 'pymupdf', 'pdf2docx']}
   runLabel="转为 Word"
   canRun={files.length === 1 && !badRange}
   blocked={badRange ? '页码范围写法有误' : '请选择一个 PDF'}

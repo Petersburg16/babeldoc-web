@@ -136,7 +136,6 @@
 
 <ToolFrame
   resetKey={files}
-  engines={['qpdf']}
   runLabel="添加水印"
   canRun={!problem}
   blocked={problem}

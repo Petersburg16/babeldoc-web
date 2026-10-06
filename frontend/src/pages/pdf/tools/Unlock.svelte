@@ -6,12 +6,16 @@
   import { EyeOff, LockOpen } from '../../../lib/pdf/icons';
   import { Cancelled } from '../../../lib/pdf/input';
   import type { EncryptionState } from '../../../lib/pdf/ops/security';
+  import { currentTool } from '../../../lib/pdf/tools';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   type Check =
     | { status: 'checking' }
     | { status: 'error'; title: string; message: string; retry: boolean }
     | ({ status: 'done' } & EncryptionState);
+
+  // 选好文件就要用引擎，不等点开始；与 ToolFrame 一样取自工具清单
+  const ENGINES = currentTool().engines;
 
   let files = $state<File[]>([]);
   let check = $state<Check | null>(null);
@@ -26,7 +30,7 @@
     const failed = (title: string, message: string, retry = false): Check => ({ status: 'error', title, message, retry });
     let security: typeof import('../../../lib/pdf/ops/security');
     try {
-      [security] = await Promise.all([import('../../../lib/pdf/ops/security'), engines.ensure(['qpdf'])]);
+      [security] = await Promise.all([import('../../../lib/pdf/ops/security'), engines.ensure(ENGINES)]);
     } catch (e) {
       console.error(e);
       return failed('引擎下载失败', '可能是网络中断了，请检查网络后重试。', true);
@@ -111,7 +115,6 @@
 
 <ToolFrame
   resetKey={files}
-  engines={['qpdf']}
   {runLabel}
   canRun={!blocked}
   {blocked}

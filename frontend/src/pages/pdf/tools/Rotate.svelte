@@ -53,7 +53,6 @@
 
 <ToolFrame
   resetKey={files}
-  engines={['qpdf']}
   runLabel={spec.trim() ? '旋转所选页面' : '旋转全部页面'}
   canRun={!!file && !specError}
   blocked={file ? '页码写法有误，请检查' : '请选择一个 PDF'}

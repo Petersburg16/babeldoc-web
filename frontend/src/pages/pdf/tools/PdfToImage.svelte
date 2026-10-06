@@ -50,7 +50,6 @@
 
 <ToolFrame
   resetKey={files}
-  engines={['qpdf', 'render']}
   runLabel="转为 {formatName}"
   canRun={files.length === 1 && !error}
   blocked={error ? '页码范围写法有误' : '请先选择一个 PDF'}

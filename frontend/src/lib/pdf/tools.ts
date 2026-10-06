@@ -1,6 +1,7 @@
 // PDF 工具清单：顺序即工具页里的展示顺序。每个工具的界面单独按需加载，
-// engines 列出它运行时需要的引擎（体积与缓存状态见 engines.svelte.ts），首页据此提示首次使用要下载多少。
-import type { Component } from 'svelte';
+// engines 列出它运行时需要的引擎（体积与缓存状态见 engines.svelte.ts），首页据此提示首次使用要下载多少，
+// 工具页的 ToolFrame 也从这里取（经组件上下文），只在这一处定义。
+import { type Component, createContext } from 'svelte';
 import { FileText, Lock } from '../icons';
 import {
   Combine,
@@ -190,3 +191,6 @@ export const TOOLS: ToolDef[] = [
 export function findTool(id: string) {
   return TOOLS.find((t) => t.id === id);
 }
+
+/** 当前打开的工具：ToolPage 用 provideTool 放进上下文，工具页里的组件在初始化时用 currentTool 取 */
+export const [currentTool, provideTool] = createContext<ToolDef>();

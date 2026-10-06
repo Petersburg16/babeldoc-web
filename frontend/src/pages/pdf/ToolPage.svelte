@@ -1,9 +1,12 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { LoaderCircle } from '../../lib/icons';
   import { ArrowLeft } from '../../lib/pdf/icons';
-  import type { ToolDef } from '../../lib/pdf/tools';
+  import { provideTool, type ToolDef } from '../../lib/pdf/tools';
 
   let { tool }: { tool: ToolDef } = $props();
+  // PdfApp 按工具 id 重建本组件，tool 在组件存续期间不变
+  provideTool(untrack(() => tool));
   const view = $derived(tool.load());
   const Icon = $derived(tool.icon);
 

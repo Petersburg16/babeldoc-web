@@ -40,7 +40,6 @@
 
 <ToolFrame
   resetKey={files}
-  engines={['qpdf', 'ghostscript']}
   runLabel={files.length > 1 ? `转换 ${files.length} 个文件` : `转为 ${current.label}`}
   canRun={files.length > 0}
   blocked="请先选择 PDF"

@@ -13,6 +13,7 @@
   import type { PageInfo, PageSource, Slot } from '../../../lib/pdf/ops/organize';
   import { normalizeRotation } from '../../../lib/pdf/ops/pages';
   import { passwordState } from '../../../lib/pdf/password.svelte';
+  import { currentTool } from '../../../lib/pdf/tools';
   import { toast } from '../../../lib/toast.svelte';
   import PageGrid, { duplicateSlots, newSlotId, rotateSlots, shownSize } from '../ui/PageGrid.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
@@ -25,7 +26,8 @@
     view: PageSource;
   }
 
-  const ENGINES: ('qpdf' | 'render')[] = ['qpdf', 'render'];
+  // 选好文件就要用引擎，不等点开始；与 ToolFrame 一样取自工具清单
+  const ENGINES = currentTool().engines;
 
   let files = $state<File[]>([]);
   let phase = $state<'idle' | 'download' | 'open' | 'ready' | 'error'>('idle');
@@ -308,7 +310,6 @@
 
 <ToolFrame
   resetKey={files}
-  engines={['qpdf', 'render']}
   stacked
   runLabel="导出整理后的 PDF"
   canRun={phase === 'ready' && hasPage && changed}
