@@ -72,6 +72,8 @@ export function duration(seconds: number | null | undefined) {
   return `${Math.floor(m / 60)} 小时 ${m % 60} 分`;
 }
 
+export const DAY = 86_400_000;
+
 export function expiryLabel(ms: number) {
   if (ms <= 0) return '即将自动删除';
   const hours = ms / 3_600_000;

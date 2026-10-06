@@ -7,8 +7,9 @@
   import Segmented from '../../components/Segmented.svelte';
   import { ApiError } from '../../lib/api';
   import { confirm } from '../../lib/confirm.svelte';
-  import { dateTime, duration, elapsedSince } from '../../lib/format';
+  import { DAY, dateTime, duration, elapsedSince } from '../../lib/format';
   import { Ban, CircleAlert, Clock, Compass, LoaderCircle, Pencil, RotateCcw, Trash2, TriangleAlert } from '../../lib/icons';
+  import { retryMeeting } from '../../lib/meeting/actions';
   import { audioUrl, meetingApi } from '../../lib/meeting/api';
   import {
     audioExpiryText,
@@ -40,7 +41,6 @@
     { value: 'transcript', label: '逐字稿' },
     { value: 'chat', label: '对话' },
   ];
-  const DAY = 86_400_000;
 
   let notFound = $state(false);
   let everLoaded = $state(false);
@@ -78,7 +78,7 @@
     meeting?.audio_available && meeting.audio_expires_at ? new Date(meeting.audio_expires_at).getTime() - now : null,
   );
   const audioLabel = $derived(audioLeft === null ? '' : audioExpiryText(audioLeft));
-  const doneParts =$derived(meeting ? meeting.parts.filter((p) => p.state === 'done').length : 0);
+  const doneParts = $derived(meeting ? meeting.parts.filter((p) => p.state === 'done').length : 0);
 
   // 不用 document.title 取站名：换会议时新旧页面的创建和销毁顺序不保证，可能取到上一场会议的标题
   const siteTitle = $derived(session.siteName);
@@ -261,10 +261,7 @@
   }
 
   async function retry() {
-    await act(async () => {
-      meetings.upsert(await meetingApi.retry(id));
-      toast.success('已重新开始处理');
-    });
+    await act(() => retryMeeting(id));
   }
 
   async function remove() {

@@ -3,7 +3,7 @@
   import Menu from '../../components/Menu.svelte';
   import ProgressBar from '../../components/ProgressBar.svelte';
   import { confirm, type ConfirmOptions } from '../../lib/confirm.svelte';
-  import { bytes, compact, dateTime, duration, elapsedSince, relativeTime } from '../../lib/format';
+  import { bytes, compact, DAY, dateTime, duration, elapsedSince, relativeTime } from '../../lib/format';
   import {
     AudioLines,
     Ban,
@@ -14,6 +14,7 @@
     Trash2,
     TriangleAlert,
   } from '../../lib/icons';
+  import { retryMeeting } from '../../lib/meeting/actions';
   import { meetingApi } from '../../lib/meeting/api';
   import {
     audioExpiryText,
@@ -33,7 +34,6 @@
   let { meeting: m, now }: { meeting: Meeting; now: number } = $props();
   let busy = $state(false);
 
-  const DAY = 86_400_000;
   const tones: Record<MeetingStatus, string> = {
     uploading: 'bg-surface-2 text-ink-2',
     queued: 'bg-surface-2 text-ink-2',
@@ -115,10 +115,7 @@
 
   async function retry() {
     const id = m.id;
-    await run(async () => {
-      meetings.upsert(await meetingApi.retry(id));
-      toast.success('已重新开始处理');
-    });
+    await run(() => retryMeeting(id));
   }
 
   async function remove() {

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api, fileUrl } from '../lib/api';
   import { confirm } from '../lib/confirm.svelte';
-  import { compact, dateTime, duration, elapsedSince, expiryLabel, jobStageLabel, relativeTime } from '../lib/format';
+  import { compact, DAY, dateTime, duration, elapsedSince, expiryLabel, jobStageLabel, relativeTime } from '../lib/format';
   import {
     Ban,
     BookOpenText,
@@ -31,7 +31,6 @@
     if (job.status !== 'running' || !elapsed || live.progress < 8 || live.progress >= 99) return null;
     return (elapsed * (100 - live.progress)) / live.progress;
   });
-  const DAY = 86_400_000;
   // 与后台清理一致：已结束的任务从结束时刻起算，清理每 30 分钟跑一次，过期未删的显示“即将删除”
   const expiresAt = $derived.by(() => {
     const days = session.meta?.file_retention_days;
