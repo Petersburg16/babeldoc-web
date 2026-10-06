@@ -18,49 +18,38 @@
     write: [0.56, 1, '写入'],
   };
 
-  // 离开页面时停掉还在跑的转换，否则回来再转要排在它后面等
-  let controller: AbortController | null = null;
-  $effect(() => () => controller?.abort());
-
   async function run(report: Report, stop: AbortSignal) {
     warnings = [];
     const file = files[0];
-    controller = new AbortController();
-    const { signal } = controller;
-    const current = controller;
-    stop.addEventListener('abort', () => current.abort(), { once: true });
+    const [{ unlockPdf }, { countPages }, { QpdfError }, { pdfToDocx }] = await Promise.all([
+      import('../../../lib/pdf/input'),
+      import('../../../lib/pdf/ops/pages'),
+      import('../../../lib/pdf/engines/qpdf'),
+      import('../../../lib/pdf/ops/pdf2docx'),
+    ]);
+    report(null, '读取文件');
+    let bytes: Uint8Array;
+    let total: number;
     try {
-      const [{ unlockPdf }, { countPages }, { QpdfError }, { pdfToDocx }] = await Promise.all([
-        import('../../../lib/pdf/input'),
-        import('../../../lib/pdf/ops/pages'),
-        import('../../../lib/pdf/engines/qpdf'),
-        import('../../../lib/pdf/ops/pdf2docx'),
-      ]);
-      report(null, '读取文件');
-      let bytes: Uint8Array;
-      let total: number;
-      try {
-        ({ bytes } = await unlockPdf(file));
-        total = await countPages(bytes);
-      } catch (e) {
-        if (e instanceof QpdfError) throw new Error(`无法读取「${file.name}」：文件可能已损坏，或不是 PDF`);
-        throw e;
-      }
-      const indices = pages.trim() ? expandRanges(pages, total) : null;
-      report(null, '加载引擎');
-      const { blob, meta } = await pdfToDocx(bytes, { pages: indices, signal }, ({ stage, done, total: n }) => {
-        const span = STAGES[stage];
-        if (!span || !n) return report(null, '加载引擎');
-        const [from, to, verb] = span;
-        report(from + ((to - from) * (done - 1)) / n, `${verb}第 ${done}/${n} 页`);
-      });
-      converted = meta.pages - meta.failed.length;
-      if (meta.failed.length) warnings.push(`第 ${meta.failed.join('、')} 页转换失败，已跳过`);
-      if (!meta.text) warnings.push('没有找到文字层，可能是扫描件，Word 里只有图片。可先用「OCR 文字识别」再转换');
-      return [{ name: renamed(file.name, '', 'docx'), blob }];
-    } finally {
-      controller = null;
+      ({ bytes } = await unlockPdf(file));
+      total = await countPages(bytes);
+    } catch (e) {
+      if (e instanceof QpdfError) throw new Error(`无法读取「${file.name}」：文件可能已损坏，或不是 PDF`);
+      throw e;
     }
+    const indices = pages.trim() ? expandRanges(pages, total) : null;
+    report(null, '加载引擎');
+    // 点停止或离开页面时 stop 会中止（ToolFrame），转换随之停下，否则回来再转要排在它后面等
+    const { blob, meta } = await pdfToDocx(bytes, { pages: indices, signal: stop }, ({ stage, done, total: n }) => {
+      const span = STAGES[stage];
+      if (!span || !n) return report(null, '加载引擎');
+      const [from, to, verb] = span;
+      report(from + ((to - from) * (done - 1)) / n, `${verb}第 ${done}/${n} 页`);
+    });
+    converted = meta.pages - meta.failed.length;
+    if (meta.failed.length) warnings.push(`第 ${meta.failed.join('、')} 页转换失败，已跳过`);
+    if (!meta.text) warnings.push('没有找到文字层，可能是扫描件，Word 里只有图片。可先用「OCR 文字识别」再转换');
+    return [{ name: renamed(file.name, '', 'docx'), blob }];
   }
 </script>
 

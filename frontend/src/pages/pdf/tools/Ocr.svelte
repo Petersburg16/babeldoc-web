@@ -19,10 +19,6 @@
 
   const badRange = $derived(range.trim() ? rangeError(range) : '');
 
-  // 离开页面时停掉还在跑的识别，释放 worker 占的内存
-  let controller: AbortController | null = null;
-  $effect(() => () => controller?.abort());
-
   async function run(report: Report, stop: AbortSignal) {
     const [{ ocrPdf }, { unlockPdf }, { QpdfError }] = await Promise.all([
       import('../../../lib/pdf/ops/ocr'),
@@ -40,24 +36,18 @@
       if (e instanceof QpdfError) throw new Error(`无法读取「${file.name}」：文件可能已损坏，或不是 PDF`);
       throw e;
     }
-    controller = new AbortController();
-    const current = controller;
-    stop.addEventListener('abort', () => current.abort(), { once: true });
     const started = performance.now();
-    try {
-      const { pdf, ...rest } = await ocrPdf(unlocked.bytes, {
-        language,
-        dpi: Number(dpi),
-        range: range.trim(),
-        skipText,
-        signal: controller.signal,
-        report,
-      });
-      done = { ...rest, name: file.name, seconds: (performance.now() - started) / 1000, encrypted: unlocked.encrypted, dpi };
-      return [{ name: renamed(file.name, 'OCR'), blob: pdfBlob(pdf) }];
-    } finally {
-      controller = null;
-    }
+    // 点停止或离开页面时 stop 会中止（ToolFrame），识别随之停下，释放 worker 占的内存
+    const { pdf, ...rest } = await ocrPdf(unlocked.bytes, {
+      language,
+      dpi: Number(dpi),
+      range: range.trim(),
+      skipText,
+      signal: stop,
+      report,
+    });
+    done = { ...rest, name: file.name, seconds: (performance.now() - started) / 1000, encrypted: unlocked.encrypted, dpi };
+    return [{ name: renamed(file.name, 'OCR'), blob: pdfBlob(pdf) }];
   }
 
   async function copy() {

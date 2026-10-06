@@ -6,7 +6,6 @@
   import { engines } from '../../../lib/pdf/engines.svelte';
   import { readBytes, type Report } from '../../../lib/pdf/files';
   import { CloudDownload } from '../../../lib/pdf/icons';
-  import { Cancelled } from '../../../lib/pdf/input';
   import { ALL_FONT_KEYS, fontEngineIds } from '../../../lib/pdf/office/fonts';
   import type { OfficeFailure } from '../../../lib/pdf/ops/office';
   import ToolFrame from '../ui/ToolFrame.svelte';
@@ -40,8 +39,7 @@
   let problems = $state<Record<string, string>>({});
   const queued = new Set<string>();
   let checks = Promise.resolve();
-  // 离开页面：还没开始的转换不再启动引擎，已启动的立即关掉
-  const leaving = new AbortController();
+  /** 引擎启动过：离开页面时要关掉（约 1.5 GB 内存），没在转换时也一样 */
   let started = false;
 
   const key = (f: File) => f.name + f.size;
@@ -98,29 +96,22 @@
           : '这个文件无法转换',
   );
 
+  const release = () => void import('../../../lib/pdf/office/engine').then((m) => m.releaseOffice());
+
   async function run(report: Report, stop: AbortSignal) {
-    // ToolFrame 下载完引擎才调用这里：下载途中已离开页面的，不再启动 LibreOffice
-    if (leaving.signal.aborted) throw new Cancelled();
     failed = [];
     started = true;
     const list = [...files];
+    // 点“停止”或离开页面时 stop 会中止（ToolFrame）：还没开始的文件不再转换，并关掉引擎（下次转换从缓存重新启动，约 1–2 秒）
+    stop.addEventListener('abort', release, { once: true });
     const { officeToPdf } = await import('../../../lib/pdf/ops/office');
-    // 点“停止”和离开页面一样：中止并关掉引擎（下次转换从缓存重新启动，约 1–2 秒）
-    const job = new AbortController();
-    const abort = () => {
-      job.abort();
-      void import('../../../lib/pdf/office/engine').then((m) => m.releaseOffice());
-    };
-    leaving.signal.addEventListener('abort', () => job.abort(), { once: true });
-    stop.addEventListener('abort', abort, { once: true });
-    const result = await officeToPdf(list, { pdfa }, report, job.signal);
+    const result = await officeToPdf(list, { pdfa }, report, stop);
     failed = result.failed;
     return result.outputs;
   }
 
   onDestroy(() => {
-    leaving.abort();
-    if (started) void import('../../../lib/pdf/office/engine').then((m) => m.releaseOffice());
+    if (started) release();
   });
 </script>
 
