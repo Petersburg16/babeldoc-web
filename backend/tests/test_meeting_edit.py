@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import threading
-import time
 from typing import Any
 
 import pytest
@@ -15,7 +14,7 @@ from app.meeting import processing
 from app.models import Meeting, MeetingLlmModel, MeetingLlmPreset, MeetingSegment, ModelProfile, User
 from app.routers import meeting_edit
 from app.security import new_job_id
-from tests.conftest import ADMIN, add_user, login
+from tests.conftest import ADMIN, add_user, login, wait_until
 from tests.llm_fake import install_fake_llm, polish_reply, tidy
 
 LINES = [
@@ -88,13 +87,12 @@ def detail(client: TestClient, mid: str) -> dict:
 
 
 def wait_op(client: TestClient, mid: str, timeout: float = 15) -> dict:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        m = detail(client, mid)
-        if m["op"] is None:
-            return m
-        time.sleep(0.05)
-    raise AssertionError(f"op {m['op']} did not finish")
+    return wait_until(
+        lambda: detail(client, mid),
+        lambda m: m["op"] is None,
+        timeout=timeout,
+        message=lambda m: f"op {m['op']} did not finish",
+    )
 
 
 def test_edit_text_and_revert(app, admin_client):
@@ -368,9 +366,7 @@ def test_op_minutes_passes_params_and_blocks_others(app, admin_client, slow_minu
     body = {"template": "group_speaker", "extra_instructions": "  重点写实验安排  "}
     resp = admin_client.post(f"/api/meetings/{mid}/ops/minutes", json=body)
     assert resp.status_code == 202 and resp.json()["minutes_state"] == "generating"
-    deadline = time.monotonic() + 5
-    while not calls and time.monotonic() < deadline:
-        time.sleep(0.02)
+    wait_until(lambda: calls, timeout=5, interval=0.02)
     assert calls == [{"template": "group_speaker", "extra": "重点写实验安排"}]
     busy = admin_client.post(f"/api/meetings/{mid}/ops/polish", json={})
     assert busy.status_code == 409 and "生成纪要" in busy.json()["detail"]

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import time
-
 from fastapi.testclient import TestClient
 
 from app.db import utcnow
@@ -16,7 +14,17 @@ from app.models import (
     MEETING_RETRYABLE,
     Job,
 )
-from tests.conftest import ADMIN, add_user, build_config, login, make_pdf, update_settings, upload, wait_status
+from tests.conftest import (
+    ADMIN,
+    add_user,
+    build_config,
+    login,
+    make_pdf,
+    update_settings,
+    upload,
+    wait_status,
+    wait_until,
+)
 
 
 def test_meta_reports_setup_and_languages(client):
@@ -229,15 +237,13 @@ def test_running_jobs_are_requeued_after_restart(tmp_path, monkeypatch):
         )
         db.commit()
     second = create_app(config)
+
+    def load() -> Job:
+        with second.state.ctx.Session() as db:
+            return db.get(Job, "stale1")
+
     with TestClient(second):
-        deadline = time.monotonic() + 10
-        while time.monotonic() < deadline:
-            with second.state.ctx.Session() as db:
-                job = db.get(Job, "stale1")
-            if job.status == "failed":
-                break
-            time.sleep(0.1)
-    assert job.status == "failed"
+        job = wait_until(load, lambda j: j.status == "failed", timeout=10, interval=0.1)
     assert job.attempts == 1
     assert "模型" in job.error
 

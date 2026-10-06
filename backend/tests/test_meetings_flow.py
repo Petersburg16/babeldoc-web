@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from datetime import timedelta
 
 import pytest
@@ -20,6 +19,7 @@ from tests.conftest import (
     update_settings,
     upload_audio,
     wait_meeting,
+    wait_until,
 )
 from tests.llm_fake import FakeLlmFailure, install_fake_llm
 
@@ -34,6 +34,19 @@ def _llm_unavailable(app):
         raise FakeLlmFailure(401, "fake: no llm in flow tests")
 
     install_fake_llm(app, reply)
+
+
+def _wait_part(app, mid: str, status: str | None = None) -> dict:
+    """等第一个识别分段提交出去（有了任务号），返回这个分段；给了 status 时会议还得处在这个状态。"""
+
+    def submitted() -> dict | None:
+        with app.state.ctx.Session() as db:
+            m = db.get(Meeting, mid)
+            if (status is None or m.status == status) and m.asr_parts and m.asr_parts[0].get("task_id"):
+                return dict(m.asr_parts[0])
+        return None
+
+    return wait_until(submitted, message="没有提交")
 
 
 def test_meeting_runs_to_done(app, admin_client):
@@ -118,15 +131,7 @@ def test_public_audio_token(app, admin_client):
     add_mock_provider(admin_client, delay_seconds="3")
     meeting = upload_audio(admin_client, make_wav(5))
     mid = meeting["id"]
-    deadline = time.monotonic() + 20
-    part: dict = {}
-    while time.monotonic() < deadline:
-        with app.state.ctx.Session() as db:
-            m = db.get(Meeting, mid)
-            if m.status == "transcribing" and m.asr_parts and m.asr_parts[0].get("task_id"):
-                part = dict(m.asr_parts[0])
-                break
-        time.sleep(0.05)
+    part = _wait_part(app, mid, status="transcribing")
     assert part.get("token"), "应该已经提交并生成了令牌"
     url = f"/api/public/meeting-audio/{mid}/0/{part['token']}.mp3"
     anon = TestClient(app)
@@ -175,10 +180,7 @@ def test_cancel_and_delete(app, admin_client):
     assert directory.exists()
     assert admin_client.delete(f"/api/meetings/{mid}").status_code == 204
     assert admin_client.get(f"/api/meetings/{mid}").status_code == 404
-    deadline = time.monotonic() + 5
-    while directory.exists() and time.monotonic() < deadline:
-        time.sleep(0.05)
-    assert not directory.exists()
+    wait_until(lambda: not directory.exists(), timeout=5, message="会议目录没有删掉")
 
 
 def test_resume_polling_after_restart(tmp_path, monkeypatch):
@@ -189,14 +191,7 @@ def test_resume_polling_after_restart(tmp_path, monkeypatch):
         login(c1, *ADMIN)
         add_mock_provider(c1, delay_seconds="4")
         mid = upload_audio(c1, make_wav(4))["id"]
-        deadline = time.monotonic() + 20
-        task_id = None
-        while time.monotonic() < deadline and not task_id:
-            with app1.state.ctx.Session() as db:
-                parts = db.get(Meeting, mid).asr_parts
-                task_id = parts[0].get("task_id") if parts else None
-            time.sleep(0.05)
-        assert task_id
+        task_id = _wait_part(app1, mid)["task_id"]
     app2 = create_app(config)
     with TestClient(app2, headers={"X-Requested-With": "pytest"}) as c2:
         login(c2, *ADMIN)
@@ -238,22 +233,11 @@ def test_stale_upload_is_cleaned(app, admin_client):
     assert not app.state.ctx.meetings.meeting_dir(mid).exists()
 
 
-def _wait_task_id(app, mid: str, timeout: float = 20) -> str:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        with app.state.ctx.Session() as db:
-            parts = db.get(Meeting, mid).asr_parts
-            if parts and parts[0].get("task_id"):
-                return parts[0]["task_id"]
-        time.sleep(0.05)
-    raise AssertionError("没有提交")
-
-
 def test_retry_after_cancel_resumes_same_task(app, admin_client):
     """识别中取消、再重试：服务商的任务还在，应接着查同一个任务号，不重新提交（避免重复计费）。"""
     provider_id = add_mock_provider(admin_client, delay_seconds="3")
     mid = upload_audio(admin_client, make_wav(5))["id"]
-    task_id = _wait_task_id(app, mid)
+    task_id = _wait_part(app, mid)["task_id"]
     assert admin_client.post(f"/api/meetings/{mid}/cancel").status_code == 200
     wait_meeting(admin_client, mid, {"canceled"})
     admin_client.patch(f"/api/admin/asr/providers/{provider_id}", json={"config": {"delay_seconds": "0.3"}})
@@ -286,7 +270,7 @@ def test_interrupted_submit_is_not_resubmitted_automatically(tmp_path, monkeypat
         login(c1, *ADMIN)
         add_mock_provider(c1, delay_seconds="30")
         mid = upload_audio(c1, make_wav(4))["id"]
-        _wait_task_id(app1, mid)
+        _wait_part(app1, mid)
     # 模拟“提交请求已发出、任务号还没落库”时服务被杀
     app2 = create_app(config)
     with app2.state.ctx.Session() as db:

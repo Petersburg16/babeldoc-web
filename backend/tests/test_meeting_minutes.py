@@ -23,7 +23,7 @@ from app.meeting.minutes import (
 from app.meeting.schemas import MeetingOut
 from app.models import Meeting, MeetingSegment, User
 from app.settings_store import load_settings, save_settings
-from tests.conftest import ADMIN
+from tests.conftest import ADMIN, wait_until
 from tests.llm_fake import FakeLlmFailure, install_fake_llm
 
 MIN = 60_000
@@ -400,16 +400,14 @@ def test_cancel_restores_state(app, admin_client):
             await asyncio.sleep(30)
 
     future = admin_client.portal.start_task_soon(partial(generate_minutes, manager, mid, SlowClient()))
-    deadline = time.monotonic() + 5
-    while load(app, mid).minutes_state != "generating" and time.monotonic() < deadline:
-        time.sleep(0.02)
-    assert load(app, mid).minutes_state == "generating"
+    wait_until(lambda: load(app, mid).minutes_state == "generating", timeout=5, interval=0.02)
     time.sleep(0.1)  # 让它走到等大模型回复那一步
     assert future.cancel()
-    deadline = time.monotonic() + 5
-    while load(app, mid).minutes_state == "generating" and time.monotonic() < deadline:
-        time.sleep(0.02)
-    assert load(app, mid).minutes_state == "none", "取消后不能一直停在“生成中”"
+    message = "取消后不能一直停在“生成中”"
+    state = wait_until(
+        lambda: load(app, mid).minutes_state, lambda s: s != "generating", timeout=5, interval=0.02, message=message
+    )
+    assert state == "none", message
 
 
 def test_truncated_output_is_saved_with_warning(app, admin_client):
