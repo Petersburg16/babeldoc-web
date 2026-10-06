@@ -8,6 +8,7 @@
            model.term 可选：术语提取单独用的模型配置（字段同 model），没有时用 model.term_model 或翻译模型
            options：页码、输出、水印、术语表等开关，键名见 build_spec 与下面的 run()
            job_id：只为落盘的 spec.json 便于排查，runner 不读；mock：只给 mock_runner.py 用
+           cache_db：翻译缓存放在哪个文件（后端给的是任务目录下的 translation-cache.db），见 use_job_cache()
            ignore_cache / preflight：后端目前不写，缺省分别是 false（用翻译缓存）、true（开工前先打一次接口）
   env      BDW_API_KEY / BDW_TERM_API_KEY 传模型密钥；model.term 只用 BDW_TERM_API_KEY，绝不回退到主密钥
   输出     每行一个 JSON 事件，写到启动时复制出来的原 stdout；
@@ -20,7 +21,8 @@
   {"event": "failed", "kind": "preflight|input|translate|internal", "message": "..."}
 
 升级 babeldoc 时：改 pyproject.toml 版本 → uv sync → 对照本文件核对 TranslationConfig 参数与事件格式 →
-在 backend 目录跑 `uv run python -m app.cli engine-check <pdf>`（跳过翻译走完整流水线）冒烟。
+在 backend 目录跑 `uv run python -m app.cli engine-check <pdf>`（跳过翻译走完整流水线）冒烟；
+use_job_cache() 用了 babeldoc.translator.cache 的内部对象（db、_TranslationCache），也要一并核对。
 """
 
 from __future__ import annotations
@@ -200,6 +202,21 @@ def load_glossaries(paths: list[str], lang_out: str) -> list:
     return glossaries
 
 
+def use_job_cache(path: str | None) -> None:
+    """把 BabelDOC 的翻译缓存改存到任务目录。
+
+    它默认把每段原文和译文存进 ~/.cache/babeldoc/cache.v1.db，所有任务共用，也从不按时间清理，
+    和站点“原文与译文按保留期删除”的承诺不符。放进任务目录后，重试同一个任务仍能复用已翻好的段落，
+    任务文件到期清理或被删除时缓存一起删掉。用到的是 babeldoc 的内部对象，升级 babeldoc 时要核对。
+    """
+    if not path:
+        return
+    from babeldoc.translator import cache
+
+    cache.db.init(path, pragmas={"journal_mode": "wal", "busy_timeout": 1000})
+    cache.db.create_tables([cache._TranslationCache], safe=True)
+
+
 async def run(spec: dict) -> None:
     import babeldoc
     from babeldoc.docvision.doclayout import DocLayoutModel
@@ -217,6 +234,7 @@ async def run(spec: dict) -> None:
         raise EngineError("preflight", "模型未配置 API Key")
 
     high_level.init()
+    use_job_cache(spec.get("cache_db"))
     cls = make_translator_class()
     translator = build_translator(cls, spec, model, api_key)
     auto_extract = bool(opts.get("auto_extract_glossary", True)) and not skip_translation

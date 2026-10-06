@@ -173,7 +173,7 @@ def _stats(ctx: AppContext, version: str) -> dict[str, Any]:
             for j, u in db.execute(
                 select(Job, User.username)
                 .join(User, User.id == Job.user_id)
-                .where(Job.status == "failed")
+                .where(Job.status == "failed", Job.deleted_at.is_(None))
                 .order_by(Job.finished_at.desc())
                 .limit(6)
             ).all()

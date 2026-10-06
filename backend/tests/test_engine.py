@@ -19,6 +19,8 @@ def test_build_spec_adds_term_profile_only_when_given(tmp_path):
     term = make_profile(2, "https://b.invalid/v1", "t", send_temperature=False)
     plain = build_spec(job=make_job(), profile=main, job_dir=tmp_path, watermark_mode="no_watermark")
     assert "term" not in plain["model"]
+    # 翻译缓存放在任务目录（不在每次运行前清空的 work/ 里），随任务文件一起删除
+    assert plain["cache_db"] == str(tmp_path / "translation-cache.db")
 
     spec = build_spec(job=make_job(), profile=main, job_dir=tmp_path, watermark_mode="no_watermark", term_profile=term)
     assert spec["model"]["model"] == "m"

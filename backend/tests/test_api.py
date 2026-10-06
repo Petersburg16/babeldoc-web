@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
-from app.db import utcnow
+from app.db import MIGRATIONS, init_db, make_engine, make_sessionmaker, utcnow
 from app.main import create_app
 from app.models import (
     JOB_ACTIVE,
@@ -13,6 +14,7 @@ from app.models import (
     MEETING_FINISHED,
     MEETING_RETRYABLE,
     Job,
+    User,
 )
 from tests.conftest import (
     ADMIN,
@@ -116,6 +118,61 @@ def test_job_lifecycle_with_mock_engine(app, admin_client):
     assert admin_client.delete(f"/api/jobs/{job['id']}").status_code == 204
     assert admin_client.get(f"/api/jobs/{job['id']}").status_code == 404
     assert not (app.state.ctx.config.jobs_dir / job["id"]).exists()
+
+
+def test_delete_job_scrubs_content(app, admin_client):
+    resp = upload(admin_client, "secret-fail.pdf", custom_system_prompt="未公开项目的术语")
+    job_id = resp.json()[0]["id"]
+    assert wait_status(admin_client, job_id, {"failed", "succeeded"})["status"] == "failed"
+    failures = admin_client.get("/api/admin/stats").json()["failures"]
+    assert [f["id"] for f in failures] == [job_id]
+
+    assert admin_client.delete(f"/api/jobs/{job_id}").status_code == 204
+    with app.state.ctx.Session() as db:
+        job = db.get(Job, job_id)
+        # 只留计费和统计要用的数字
+        assert job.filename == "（已删除）"
+        assert job.error is None and job.warning is None
+        assert "custom_system_prompt" not in job.options
+        assert job.billed_pages == 3 and job.deleted_at is not None
+    # 后台概览的“最近失败”不再列出已删除的任务
+    assert admin_client.get("/api/admin/stats").json()["failures"] == []
+
+
+def test_migration_scrubs_previously_deleted_jobs(tmp_path):
+    engine = make_engine(tmp_path / "old.db")
+    try:
+        init_db(engine)
+        Session = make_sessionmaker(engine)
+        with Session() as db:
+            db.add(User(id=1, username="u", display_name="u", password_hash="x"))
+            db.commit()
+            for job_id, deleted in (("gone", utcnow()), ("kept", None)):
+                db.add(
+                    Job(
+                        id=job_id,
+                        user_id=1,
+                        filename=f"{job_id}.pdf",
+                        lang_in="en",
+                        lang_out="zh-CN",
+                        billed_pages=2,
+                        options={"custom_system_prompt": "p", "output": "dual"},
+                        error="boom",
+                        deleted_at=deleted,
+                    )
+                )
+            db.commit()
+        with engine.begin() as conn:
+            conn.execute(text("PRAGMA user_version = 1"))  # 上一版的库
+        init_db(engine)
+        with Session() as db:
+            gone, kept = db.get(Job, "gone"), db.get(Job, "kept")
+            assert (gone.filename, gone.error, gone.options) == ("（已删除）", None, {"output": "dual"})
+            assert (kept.filename, kept.error, kept.options["custom_system_prompt"]) == ("kept.pdf", "boom", "p")
+        with engine.connect() as conn:
+            assert conn.execute(text("PRAGMA user_version")).scalar() == MIGRATIONS[-1][0]
+    finally:
+        engine.dispose()
 
 
 def test_failure_then_retry(app, admin_client):

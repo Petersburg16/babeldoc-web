@@ -74,6 +74,8 @@ def build_spec(
         "input": str(job_dir / "input.pdf"),
         "output_dir": str(job_dir / "out"),
         "working_dir": str(job_dir / "work"),
+        # 翻译缓存跟着任务目录走：重试能复用，到期清理或删除任务时一起删掉（work/ 每次运行前会清空，所以不放那里）
+        "cache_db": str(job_dir / "translation-cache.db"),
         "lang_in": job.lang_in,
         "lang_out": job.lang_out,
         "skip_translation": skip_translation,

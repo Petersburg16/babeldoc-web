@@ -109,10 +109,25 @@ def retry_job(db: Session, ctx: AppContext, job: Job) -> None:
     ctx.manager.broadcast_queue()
 
 
+DELETED_NAME = "（已删除）"
+
+
+def scrub_deleted(job: Job) -> None:
+    """删除任务时清掉内容：只留计费和统计要用的页数、token、状态与时间。
+
+    文件名、报错、提示词本身也可能敏感，而库会每天备份、被拉到别处保存（删除会议时同样清空内容）。
+    """
+    job.filename = DELETED_NAME
+    job.error = None
+    job.warning = None
+    job.options = {k: v for k, v in (job.options or {}).items() if k != "custom_system_prompt"}
+
+
 def delete_job(db: Session, ctx: AppContext, job: Job) -> None:
     was_running = job.status == "running"
     now = utcnow()
     job.deleted_at = now
+    scrub_deleted(job)
     if job.status == "queued":
         job.status = "canceled"
         job.finished_at = now

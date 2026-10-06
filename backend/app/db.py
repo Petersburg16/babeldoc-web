@@ -73,8 +73,20 @@ def add_column(table: str, column: str, ddl: str) -> Migration:
     return run
 
 
+def scrub_deleted_jobs(conn: Connection) -> None:
+    """以前删除任务只打标记，文件名、报错和自定义提示词都留在库里；补清一遍（与 job_ops.scrub_deleted 一致）。"""
+    conn.execute(
+        text(
+            "UPDATE jobs SET filename = '（已删除）', error = NULL, warning = NULL,"
+            " options = json_remove(options, '$.custom_system_prompt')"
+            " WHERE deleted_at IS NOT NULL"
+        )
+    )
+
+
 MIGRATIONS: list[tuple[int, list[Migration]]] = [
     (1, [add_column("meetings", "llm_preset_id", "INTEGER")]),
+    (2, [scrub_deleted_jobs]),
 ]
 
 
