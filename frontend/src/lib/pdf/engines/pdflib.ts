@@ -68,9 +68,34 @@ export async function openPdfLib(bytes: Uint8Array) {
   return PDFDocument.load(bytes, { updateMetadata: false });
 }
 
-/** 保存；保留对象流压缩，体积更小 */
-export async function savePdfLib(doc: PDFDocument) {
-  return doc.save({ useObjectStreams: true });
+/** 文档目录里的 XMP 元数据（按 UTF-8 解出的文本）；没有或解不开时为 undefined */
+export function readXmp(lib: Pick<PdfLib, 'PDFName' | 'PDFRawStream' | 'decodePDFRawStream'>, doc: PDFDocument) {
+  const { PDFName, PDFRawStream, decodePDFRawStream } = lib;
+  try {
+    const s = doc.catalog.lookup(PDFName.of('Metadata'));
+    if (!(s instanceof PDFRawStream)) return undefined;
+    return new TextDecoder('utf-8').decode(decodePDFRawStream(s).decode());
+  } catch {
+    return undefined;
+  }
+}
+
+/** XMP 里声明的 PDF/A 级别（元素和属性两种写法都认），例如 { part: 2, level: 'B' }；不是 PDF/A 时为 null */
+export function pdfaOf(xmp: string | undefined) {
+  if (!xmp) return null;
+  const part = /<pdfaid:part>\s*(\d)\s*</.exec(xmp) ?? /pdfaid:part\s*=\s*["'](\d)["']/.exec(xmp);
+  if (!part) return null;
+  const level = /<pdfaid:conformance>\s*([A-Za-z])\s*</.exec(xmp) ?? /pdfaid:conformance\s*=\s*["']([A-Za-z])["']/.exec(xmp);
+  return { part: Number(part[1]), level: level?.[1].toUpperCase() ?? '' };
+}
+
+/**
+ * 保存。默认用对象流压缩，体积更小；但 PDF/A-1 不允许对象流（pdf-lib 会直接报错），文件声明为 PDF/A-1 时自动不用。
+ * objectStreams 显式传入时以它为准。不补空白页、不重新生成表单外观：只写出改过的内容（本站不经 pdf-lib 改表单）
+ */
+export async function savePdfLib(doc: PDFDocument, options: { objectStreams?: boolean } = {}) {
+  const objectStreams = options.objectStreams ?? pdfaOf(readXmp(await loadPdfLib(), doc))?.part !== 1;
+  return doc.save({ useObjectStreams: objectStreams, addDefaultPage: false, updateFieldAppearances: false });
 }
 
 /**

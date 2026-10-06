@@ -16,9 +16,9 @@ import {
 import { errorText } from '../../format';
 import { assetBytes } from '../engines.svelte';
 import type { Report } from '../files';
-import { type CjkFont, fontForText, loadFontkit, needsCjkFont, openPdfLib, ownResources } from '../engines/pdflib';
+import { type CjkFont, fontForText, loadFontkit, needsCjkFont, openPdfLib, ownResources, savePdfLib } from '../engines/pdflib';
 import { expandRanges } from '../ranges';
-import { embedStandard, saveDoc } from './metadata';
+import { embedStandard } from './metadata';
 
 export type NumberFormat = 'n' | 'n-of-total' | 'dash' | 'zh' | 'zh-of-total';
 export type Vertical = 'top' | 'bottom';
@@ -131,5 +131,5 @@ export async function addPageNumbers(bytes: Uint8Array, o: PageNumberOptions, re
     page.pushOperators(endMarkedContent());
   });
 
-  return { bytes: await saveDoc(doc), count: targets.length, standard };
+  return { bytes: await savePdfLib(doc), count: targets.length, standard };
 }

@@ -10,13 +10,13 @@ import {
   fontList,
   gsPdf,
   inspect,
-  saveDoc,
   substitutedCid,
   structureWarnings,
   tryOpen,
   unlockForGs,
   wrongGlyphFonts,
 } from '../engines/gs';
+import { savePdfLib } from '../engines/pdflib';
 import { qpdfOne } from '../engines/qpdf';
 import { pdfBlob, readBytes, renamed, type OutputFile, type Report } from '../files';
 import { Cancelled, passwordFor } from '../input';
@@ -105,7 +105,7 @@ async function withGhostscript(
     const fixed = (doc = await tryOpen(output));
     if (fixed) {
       const gsOutput = output;
-      output = await attempt(async () => ((await fixUnicodeCMaps(fixed)) ? saveDoc(fixed, true) : gsOutput), gsOutput);
+      output = await attempt(async () => ((await fixUnicodeCMaps(fixed)) ? savePdfLib(fixed) : gsOutput), gsOutput);
     }
   }
   if (output.length >= file.size) return { output, warnings: [], unsafe: false };

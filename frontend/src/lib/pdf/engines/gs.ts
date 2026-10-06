@@ -171,10 +171,6 @@ export async function attempt<T>(job: () => Promise<T>, fallback: T): Promise<T>
 
 export const tryOpen = (bytes: Uint8Array) => attempt<PDFDocument | null>(() => openPdfLib(bytes), null);
 
-export async function saveDoc(doc: PDFDocument, objectStreams: boolean) {
-  return doc.save({ useObjectStreams: objectStreams, addDefaultPage: false, updateFieldAppearances: false });
-}
-
 /** 按 Unicode 编码的 CMap：字符码就是 UTF-16 码位 */
 const UNICODE_CMAP = /^Uni(GB|CNS|JIS|KS)-(UTF16|UCS2)-[HV]$/;
 

@@ -15,7 +15,6 @@ import {
   hasEmbeddedFiles,
   inspect,
   markPrintable,
-  saveDoc,
   stripAttachments,
   structureWarnings,
   substitutedCid,
@@ -23,6 +22,7 @@ import {
   unlockForGs,
   wrongGlyphFonts,
 } from '../engines/gs';
+import { savePdfLib } from '../engines/pdflib';
 import { pdfBlob, readBytes, renamed, type OutputFile, type Report } from '../files';
 
 export type PdfALevel = '2b' | '3b' | '1b';
@@ -68,7 +68,7 @@ export async function convertToPdfA(
         async () => {
           const marked = await markPrintable(source);
           const attachments = await stripAttachments(source);
-          return { input: marked || attachments ? await saveDoc(source, false) : bytes, attachments };
+          return { input: marked || attachments ? await savePdfLib(source, { objectStreams: false }) : bytes, attachments };
         },
         { input: bytes, attachments: 0 },
       )
@@ -122,7 +122,7 @@ export async function convertToPdfA(
         const names = part === '1' ? 0 : await fixGbkFontNames(doc);
         const cmaps = substituted ? await fixUnicodeCMaps(doc) : 0;
         // PDF/A-1 不允许对象流；2、3 允许，Ghostscript 自己也用，保留可避免体积变大
-        return names || cmaps ? saveDoc(doc, part !== '1') : gsOutput;
+        return names || cmaps ? savePdfLib(doc, { objectStreams: part !== '1' }) : gsOutput;
       }, gsOutput);
   const after = doc ? await attempt(() => inspect(doc), null) : null;
   // 预处理没能去掉的附件（pdf-lib 读不了原文件等）会让结果验证不过

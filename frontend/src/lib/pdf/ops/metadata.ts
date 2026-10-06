@@ -15,7 +15,7 @@ import {
   PDFString,
   decodePDFRawStream,
 } from '@cantoo/pdf-lib';
-import { openPdfLib } from '../engines/pdflib';
+import { openPdfLib, pdfaOf, readXmp as readXmpWith, savePdfLib } from '../engines/pdflib';
 
 export const TEXT_FIELDS = ['title', 'author', 'subject', 'keywords', 'creator', 'producer'] as const;
 export type TextField = (typeof TEXT_FIELDS)[number];
@@ -103,23 +103,7 @@ function dateOf(v: PDFObject | undefined): Date | null {
   }
 }
 
-function readXmp(doc: PDFDocument) {
-  try {
-    const s = doc.catalog.lookup(N('Metadata'));
-    if (!(s instanceof PDFRawStream)) return undefined;
-    return new TextDecoder('utf-8').decode(decodePDFRawStream(s).decode());
-  } catch {
-    return undefined;
-  }
-}
-
-function pdfaOf(xmp: string | undefined) {
-  if (!xmp) return null;
-  const part = /<pdfaid:part>\s*(\d)\s*</.exec(xmp) ?? /pdfaid:part\s*=\s*["'](\d)["']/.exec(xmp);
-  if (!part) return null;
-  const level = /<pdfaid:conformance>\s*([A-Za-z])\s*</.exec(xmp) ?? /pdfaid:conformance\s*=\s*["']([A-Za-z])["']/.exec(xmp);
-  return { part: Number(part[1]), level: level?.[1].toUpperCase() ?? '' };
-}
+const readXmp = (doc: PDFDocument) => readXmpWith({ PDFName, PDFRawStream, decodePDFRawStream }, doc);
 
 /** PDF/UA 只靠 XMP 里的 pdfuaid 声明身份（第 2 部分还要带修订年份） */
 function pdfuaOf(xmp: string | undefined) {
@@ -237,11 +221,6 @@ function writeUaXmp(doc: PDFDocument, info: PDFDict, ua: { part: number; rev: st
   doc.catalog.set(N('Metadata'), doc.context.register(stream));
 }
 
-/** 保存并压缩；PDF/A-1 不允许对象流（pdf-lib 会直接报错），这时不用 */
-export function saveDoc(doc: PDFDocument) {
-  return doc.save({ useObjectStreams: pdfaOf(readXmp(doc))?.part !== 1 });
-}
-
 /** bytes 需未加密（先用 unlockPdf 解开） */
 export async function readMetadata(bytes: Uint8Array): Promise<PdfMetadata> {
   const doc = await openPdfLib(bytes);
@@ -344,7 +323,7 @@ export async function editMetadata(bytes: Uint8Array, edit: MetadataEdit) {
   }
   // 其余 PDF/A 级别（A 级、第 4 部分）pdf-lib 不会重写，保留原 XMP
   collectGarbage(doc);
-  return saveDoc(doc);
+  return savePdfLib(doc);
 }
 
 /** 清除全部元数据：Info 字典、文档级与对象级 XMP、PieceInfo、文档 ID，并回收孤立对象 */
@@ -362,7 +341,7 @@ export async function clearMetadata(bytes: Uint8Array) {
     d?.delete(N('PieceInfo'));
   }
   const removed = collectGarbage(doc);
-  return { bytes: await saveDoc(doc), removed };
+  return { bytes: await savePdfLib(doc), removed };
 }
 
 // pdf-lib 会把读入的每个对象原样写回，删掉字典里的引用并不会让数据从文件里消失，所以从 trailer 出发标记可达对象，其余删除。
