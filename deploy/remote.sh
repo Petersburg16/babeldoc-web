@@ -167,6 +167,7 @@ rollback() {
 }
 
 # 快照与校验都以服务用户运行：以 root 打开 app.db 会让 WAL 的 -shm/-wal 归 root，服务就写不进去了
+# 整段在 bash 单引号里：Python 代码里不能出现单引号（tests/test_remote_sh.py 会检查）
 DB_TOOL='
 import sqlite3, sys
 mode, db = sys.argv[1], sys.argv[2]
@@ -178,7 +179,7 @@ if mode == "snapshot":
 else:
     conn = sqlite3.connect(db)
 check = conn.execute("pragma integrity_check").fetchone()[0]
-tables = {r[0] for r in conn.execute("select name from sqlite_master where type = 'table'")}
+tables = {r[0] for r in conn.execute("select name from sqlite_master where type = ?", ("table",))}
 wanted = ("users", "model_profiles", "jobs", "meetings", "asr_providers", "meeting_llm_models", "meeting_llm_presets")
 counts = {t: conn.execute(f"select count(*) from {t}").fetchone()[0] for t in wanted if t in tables}
 note = ""

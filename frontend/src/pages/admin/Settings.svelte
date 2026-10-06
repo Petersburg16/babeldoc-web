@@ -125,7 +125,7 @@
         <div>
           <label class="label" for="s-conc">同时翻译的任务数</label>
           <input id="s-conc" class="field" type="number" min="1" max="4" bind:value={form.max_concurrent_jobs} />
-          <p class="hint">4 核 6G 的服务器建议 1–2：每个任务约占 2 核、1.5 GB 内存</p>
+          <p class="hint">每个任务约占 2 核、1.5 GB 内存；并发 2 的吞吐只比 1 高一成多，一般保持 1</p>
         </div>
         <div>
           <label class="label" for="s-mb">单个文件大小上限（MB）</label>

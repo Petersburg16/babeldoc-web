@@ -11,9 +11,10 @@ WorkingDirectory=/opt/babeldoc-web/current/backend
 EnvironmentFile=/opt/babeldoc-web/shared/env
 Environment=HOME=/var/lib/babeldoc-web
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/babeldoc-web/current/backend/.venv/bin/uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8090 --proxy-headers --forwarded-allow-ips=127.0.0.1 --no-access-log
+ExecStart=/opt/babeldoc-web/current/backend/.venv/bin/uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8090 --proxy-headers --forwarded-allow-ips=127.0.0.1 --no-access-log --timeout-graceful-shutdown 10
 Restart=on-failure
 RestartSec=3
+# 浏览器的实时推送是长连接，不设上限 uvicorn 会一直等它们断开，等满 TimeoutStopSec 被强杀，关闭时的清理也就跳过了
 TimeoutStopSec=30
 KillMode=mixed
 
