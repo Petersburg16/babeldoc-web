@@ -102,16 +102,22 @@ export interface EncryptionInfo {
   needsPassword: boolean;
 }
 
-/** 检查加密状态；password 用于验证用户输入的密码 */
-export async function encryptionInfo(input: Uint8Array, password?: string): Promise<EncryptionInfo> {
+/** --show-encryption 的文字输出；需要打开密码（或给的密码不对）时返回 null */
+export async function showEncryption(input: Uint8Array, password?: string): Promise<string | null> {
   const pw = password ? [`--password=${password}`] : [];
   try {
-    const r = await runQpdf([...pw, '--show-encryption', '/in.pdf'], { 'in.pdf': input }, []);
-    return { encrypted: !/not encrypted/i.test(r.log), needsPassword: false };
+    return (await runQpdf([...pw, '--show-encryption', '/in.pdf'], { 'in.pdf': input }, [])).log;
   } catch (e) {
-    if (e instanceof QpdfError && /invalid password/i.test(e.log)) return { encrypted: true, needsPassword: true };
+    if (e instanceof QpdfError && /invalid password/i.test(e.log)) return null;
     throw e;
   }
+}
+
+/** 检查加密状态；password 用于验证用户输入的密码 */
+export async function encryptionInfo(input: Uint8Array, password?: string): Promise<EncryptionInfo> {
+  const log = await showEncryption(input, password);
+  if (log === null) return { encrypted: true, needsPassword: true };
+  return { encrypted: !/not encrypted/i.test(log), needsPassword: false };
 }
 
 /** 去掉加密（含只限制权限的情况）；需要打开密码时传 password，密码错误抛出 QpdfError('密码不正确') */

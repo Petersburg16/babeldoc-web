@@ -2,14 +2,11 @@
 // 页面先用 engines.ensure 下载进 Cache Storage，worker 再从那里读，不碰任何第三方 CDN。
 // 移植自 BentoPDF（AGPL-3.0）对 @bentopdf/pymupdf-wasm 的用法，按本站引擎与缓存方式重写。
 // 一次只跑一个任务；WASM 内存只增不减（跑完一份论文约 250 MB），空闲一分钟后关掉 worker。
-import lockData from '../../../../pdf-assets.lock.json';
-import { assetBase, type EngineId } from '../engines.svelte';
+import { absoluteAssetUrl, CACHE_NAME, type EngineId, engineFiles } from '../engines.svelte';
 import { Cancelled } from '../input';
 import type { PyRequest, PyResponse } from './pymupdf.worker';
 
 const IDLE_MS = 60_000;
-// 与 engines.svelte.ts 的 CACHE_NAME 一致
-const CACHE_NAME = 'bdw-pdf-assets';
 
 export interface PyProgress {
   /** init 为加载引擎，其余由各个 Python 入口函数自己定义 */
@@ -37,15 +34,11 @@ export class PymupdfError extends Error {
   }
 }
 
-const absolute = (path: string) => new URL(path, location.origin).href;
-
 /** 某个引擎目录下的全部 wheel（完整网址），文件名取自锁文件，升级 wheel 不用改代码 */
 export function engineWheels(id: EngineId) {
-  const engine = (lockData.engines as Record<string, { files: Record<string, unknown> }>)[id];
-  if (!engine) throw new Error(`未知的引擎：${id}`);
-  return Object.keys(engine.files)
+  return engineFiles(id)
     .filter((name) => name.endsWith('.whl'))
-    .map((name) => absolute(assetBase(id) + name));
+    .map((name) => absoluteAssetUrl(id, name));
 }
 
 let worker: Worker | null = null;
@@ -111,7 +104,7 @@ function exec(job: PyJob, onProgress?: (p: PyProgress) => void, signal?: AbortSi
     const input = job.input.slice().buffer as ArrayBuffer; // 转交给 worker，调用方的数据不受影响
     const request: PyRequest = {
       id,
-      indexURL: absolute(assetBase('pymupdf')),
+      indexURL: absoluteAssetUrl('pymupdf'),
       wheels: [...engineWheels('pymupdf'), ...job.wheels],
       cacheName: CACHE_NAME,
       setup: job.setup,

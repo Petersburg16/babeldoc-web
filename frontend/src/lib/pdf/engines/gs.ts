@@ -4,7 +4,7 @@
 // 前后各加一道 pdf-lib 处理（保住链接、修正中文字体名和文字提取）。一个任务一个 worker，用完即关，释放 WASM 内存。
 import type { PDFDocument, PDFObject } from '@cantoo/pdf-lib';
 import { errorText } from '../../format';
-import { assetUrl } from '../engines.svelte';
+import { absoluteAssetUrl } from '../engines.svelte';
 import type { Report } from '../files';
 import { Cancelled, unlockPdf } from '../input';
 import type { GsMessage, GsRequest } from './gs.worker';
@@ -36,8 +36,6 @@ export const LOSSLESS_IMAGES = [
 
 const CRASHED = 'Ghostscript 引擎意外退出，多半是内存不足：请关闭其他标签页后重试，或换用电脑上的浏览器';
 
-const absolute = (url: string) => new URL(url, location.origin).href;
-
 /** 跑一条 Ghostscript 命令。inputs 写入 worker 的内存文件系统（复制后转交，调用方的数据不受影响） */
 export function runGhostscript(
   args: string[],
@@ -68,8 +66,8 @@ export function runGhostscript(
       reject(new GsError(CRASHED));
     };
     const request: GsRequest = {
-      jsUrl: absolute(assetUrl('ghostscript', 'gs.js')),
-      wasmUrl: absolute(assetUrl('ghostscript', 'gs.wasm')),
+      jsUrl: absoluteAssetUrl('ghostscript', 'gs.js'),
+      wasmUrl: absoluteAssetUrl('ghostscript', 'gs.wasm'),
       args,
       inputs: copies,
       outputs,

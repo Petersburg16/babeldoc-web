@@ -16,7 +16,7 @@ import {
 import { errorText } from '../../format';
 import { assetBytes } from '../engines.svelte';
 import type { Report } from '../files';
-import { type CjkFont, fontForText, needsCjkFont, openPdfLib, ownResources } from '../engines/pdflib';
+import { type CjkFont, fontForText, loadFontkit, needsCjkFont, openPdfLib, ownResources } from '../engines/pdflib';
 import { expandRanges } from '../ranges';
 import { embedStandard, saveDoc } from './metadata';
 
@@ -76,10 +76,7 @@ function visualFrame(page: PDFPage): VisualFrame {
 
 // 内置的 Helvetica 不嵌入文件，PDF/A 等标准不允许。改用字宽与它相同的 Liberation Sans（pdf.js 自带，约 140 KB）子集嵌入
 async function embeddedLatinFont(doc: PDFDocument): Promise<PDFFont> {
-  const [kit, bytes] = await Promise.all([
-    import('@cantoo/fontkit').then((m) => (m as { default?: unknown }).default ?? m),
-    assetBytes('render', 'standard_fonts/LiberationSans-Regular.ttf'),
-  ]);
+  const [kit, bytes] = await Promise.all([loadFontkit(), assetBytes('render', 'standard_fonts/LiberationSans-Regular.ttf')]);
   doc.registerFontkit(kit as Parameters<PDFDocument['registerFontkit']>[0]);
   return doc.embedFont(bytes, { subset: true });
 }

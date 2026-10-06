@@ -4,6 +4,8 @@
 // 缩略图由 pdf.js 按需渲染成 JPEG blob，画布用完立即释放，几百页的文件也只占几 MB。
 import { canvasToBlob, closePdf, openPdf, releaseCanvas, renderPage } from '../engines/pdfjs';
 import { QpdfError, runQpdf } from '../engines/qpdf';
+import { compactPages } from '../ranges';
+import { normalizeRotation } from './pages';
 
 /** 整理后的一页：原文件的第 index 页（0 起计），或一张空白页。rotate 为用户叠加的角度，可累计（便于动画），导出时归一化 */
 export type Slot =
@@ -14,11 +16,6 @@ export type Slot =
 export interface PageInfo {
   width: number;
   height: number;
-}
-
-/** 归一化到 0/90/180/270 */
-export function normalizeRotation(deg: number) {
-  return (((deg % 360) + 360) % 360) as 0 | 90 | 180 | 270;
 }
 
 /** 每个尺寸一页空白页的极简 PDF（qpdf --check 无错误），不需要 pdf-lib */
@@ -44,17 +41,6 @@ export function blankPdf(sizes: [number, number][]): Uint8Array {
   return new TextEncoder().encode(s);
 }
 
-/** 1 起计的页号列表压成 qpdf 写法：连续递增的合并为 a-b */
-function compact(pages: number[]) {
-  const parts: string[] = [];
-  for (let i = 0; i < pages.length; i++) {
-    const start = pages[i];
-    while (i + 1 < pages.length && pages[i + 1] === pages[i] + 1) i++;
-    parts.push(start === pages[i] ? `${start}` : `${start}-${pages[i]}`);
-  }
-  return parts.join(',');
-}
-
 /** qpdf 参数：原文件为主文件（"."），连续来自同一文件的页并成一段；旋转按输出页号、相对原角度叠加 */
 export function organizeArgs(slots: Slot[]) {
   const args = ['/src.pdf', '--remove-unreferenced-resources=yes', '--object-streams=generate', '--pages'];
@@ -65,20 +51,20 @@ export function organizeArgs(slots: Slot[]) {
     const file = s.kind === 'page' ? '.' : '/blank.pdf';
     const page = s.kind === 'page' ? s.index + 1 : ++blankNo;
     if (file !== runFile && runPages.length) {
-      args.push(runFile, compact(runPages));
+      args.push(runFile, compactPages(runPages));
       runPages = [];
     }
     runFile = file;
     runPages.push(page);
   }
-  if (runPages.length) args.push(runFile, compact(runPages));
+  if (runPages.length) args.push(runFile, compactPages(runPages));
   args.push('--');
   const byAngle = new Map<number, number[]>();
   slots.forEach((s, i) => {
     const angle = normalizeRotation(s.rotate);
     if (angle) byAngle.set(angle, [...(byAngle.get(angle) ?? []), i + 1]);
   });
-  for (const [angle, pages] of byAngle) args.push(`--rotate=+${angle}:${compact(pages)}`);
+  for (const [angle, pages] of byAngle) args.push(`--rotate=+${angle}:${compactPages(pages)}`);
   args.push('/out.pdf');
   return args;
 }

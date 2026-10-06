@@ -94,6 +94,11 @@ export function errorText(e: unknown) {
   return e instanceof Error ? e.message : String(e);
 }
 
+/** 接在中文后面的名称以西文或数字开头时前面空一格：“下载 qpdf 页面与加密引擎”“下载思源黑体” */
+export function spaced(label: string) {
+  return /^[A-Za-z0-9]/.test(label) ? ` ${label}` : label;
+}
+
 /** 输入法组字时的按键，例如确认候选词的回车，不能当成提交；Safari 先结束组字再发这个回车，只能靠 keyCode 229 认出来 */
 export function isImeEnter(event: KeyboardEvent) {
   return event.isComposing || event.keyCode === 229;

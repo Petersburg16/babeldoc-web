@@ -4,12 +4,14 @@
   import FilePicker from '../../../components/FilePicker.svelte';
   import ProgressBar from '../../../components/ProgressBar.svelte';
   import { confirm } from '../../../lib/confirm.svelte';
+  import { spaced } from '../../../lib/format';
   import { CircleAlert, Copy, LoaderCircle, RotateCcw, Trash2 } from '../../../lib/icons';
   import { engines } from '../../../lib/pdf/engines.svelte';
   import { pdfBlob, renamed, type Report } from '../../../lib/pdf/files';
   import { ArrowDownUp, FilePlus, RotateCw, Undo2 } from '../../../lib/pdf/icons';
   import { Cancelled } from '../../../lib/pdf/input';
   import type { PageInfo, PageSource, Slot } from '../../../lib/pdf/ops/organize';
+  import { normalizeRotation } from '../../../lib/pdf/ops/pages';
   import { passwordState } from '../../../lib/pdf/password.svelte';
   import { toast } from '../../../lib/toast.svelte';
   import PageGrid, { duplicateSlots, newSlotId, rotateSlots, shownSize } from '../ui/PageGrid.svelte';
@@ -41,14 +43,11 @@
   let panel = $state<HTMLElement>();
 
   const chosen = $derived(new Set(selected));
-  const norm = (deg: number) => ((deg % 360) + 360) % 360;
-  const signature = (list: Slot[]) => list.map((s) => (s.kind === 'page' ? `${s.index}:${norm(s.rotate)}` : 'b')).join(',');
+  const signature = (list: Slot[]) =>
+    list.map((s) => (s.kind === 'page' ? `${s.index}:${normalizeRotation(s.rotate)}` : 'b')).join(',');
   const changed = $derived(signature(items) !== signature(initial));
   const hasPage = $derived(items.some((s) => s.kind === 'page'));
-  const engineLabel = $derived.by(() => {
-    const label = engines.label(ENGINES);
-    return /^[A-Za-z]/.test(label) ? ` ${label}` : label;
-  });
+  const engineLabel = $derived(spaced(engines.label(ENGINES)));
 
   const stats = $derived.by(() => {
     const order = items.filter((s) => s.kind === 'page').map((s) => s.index);
@@ -58,7 +57,7 @@
     const firsts = order.filter((p, i) => order.indexOf(p) === i);
     if (firsts.some((p, i) => i > 0 && p < firsts[i - 1])) parts.push('顺序已调整');
     if (deleted) parts.push(`删除 ${deleted} 页`);
-    const rotated = items.filter((s) => norm(s.rotate)).length;
+    const rotated = items.filter((s) => normalizeRotation(s.rotate)).length;
     if (rotated) parts.push(`旋转 ${rotated} 页`);
     if (order.length > kept.size) parts.push(`复制 ${order.length - kept.size} 页`);
     const blanks = items.length - order.length;

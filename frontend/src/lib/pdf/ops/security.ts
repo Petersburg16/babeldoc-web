@@ -1,7 +1,7 @@
 // 加密、解密与解除权限限制，全部交给 qpdf。
 // 移植自 BentoPDF（AGPL-3.0）src/js/logic/encrypt-pdf-page.ts、remove-restrictions-page.ts，按本站引擎与界面重写。
 // 加密状态读 --show-encryption 的文字输出：--json 在常驻的 qpdf 实例里第二次调用就会失败（实测）。
-import { QpdfError, qpdfOne, runQpdf } from '../engines/qpdf';
+import { QpdfError, qpdfOne, runQpdf, showEncryption } from '../engines/qpdf';
 
 export type PrintLevel = 'full' | 'low' | 'none';
 
@@ -145,16 +145,8 @@ const METHODS: Record<string, string> = { AESv3: 'AES-256', AESv2: 'AES-128', RC
 
 /** 读加密状态和权限；password 为空时，只限制权限的文件也能读到权限 */
 export async function inspectEncryption(input: Uint8Array, password?: string): Promise<EncryptionState> {
-  const pw = password ? [`--password=${password}`] : [];
-  let log: string;
-  try {
-    log = (await runQpdf([...pw, '--show-encryption', '/in.pdf'], { 'in.pdf': input }, [])).log;
-  } catch (e) {
-    if (e instanceof QpdfError && /invalid password/i.test(e.log)) {
-      return { encrypted: true, needsPassword: true, limits: [] };
-    }
-    throw e;
-  }
+  const log = await showEncryption(input, password);
+  if (log === null) return { encrypted: true, needsPassword: true, limits: [] };
   if (/not encrypted/i.test(log)) return { encrypted: false, needsPassword: false, limits: [] };
   const allowed = (key: string) => !new RegExp(`^${key}: not allowed`, 'im').test(log);
   const method = /^file encryption method: (\S+)/im.exec(log)?.[1];

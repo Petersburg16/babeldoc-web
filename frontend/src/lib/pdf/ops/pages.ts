@@ -19,6 +19,11 @@ export function toQpdfRange(spec: string, total: number) {
     .join(',');
 }
 
+/** 旋转角度归一化到 0/90/180/270（qpdf 的 --rotate 只认这几个） */
+export function normalizeRotation(deg: number) {
+  return (((deg % 360) + 360) % 360) as 0 | 90 | 180 | 270;
+}
+
 export interface MergeInput {
   bytes: Uint8Array;
   /** 本站写法的页码范围，空表示全部 */

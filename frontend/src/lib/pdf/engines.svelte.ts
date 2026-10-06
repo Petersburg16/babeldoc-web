@@ -33,7 +33,8 @@ export interface Progress {
   label: string;
 }
 
-const CACHE_NAME = 'bdw-pdf-assets';
+/** Cache Storage 的缓存名；public/pdf-sw.js 不能 import，那边另写了一份，改名时两处一起改 */
+export const CACHE_NAME = 'bdw-pdf-assets';
 
 function spec(id: string): LockEngine | undefined {
   return LOCK[id];
@@ -47,6 +48,18 @@ export function assetBase(id: EngineId) {
 
 export function assetUrl(id: EngineId, path: string) {
   return assetBase(id) + path;
+}
+
+/** 带域名的完整网址：交给 worker 或第三方库时，相对网址会按它们自己的脚本地址解析；path 为空时是引擎目录（以 / 结尾） */
+export function absoluteAssetUrl(id: EngineId, path = '') {
+  return new URL(assetUrl(id, path), location.origin).href;
+}
+
+/** 锁文件里这个引擎的全部文件（相对引擎目录的路径） */
+export function engineFiles(id: EngineId) {
+  const e = spec(id);
+  if (!e) throw new Error(`未知的引擎：${id}`);
+  return Object.keys(e.files);
 }
 
 async function openCache(): Promise<Cache | null> {

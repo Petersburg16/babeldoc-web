@@ -4,7 +4,7 @@
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { errorText } from '../../format';
-import { assetBase } from '../engines.svelte';
+import { absoluteAssetUrl } from '../engines.svelte';
 
 export type PdfDoc = pdfjs.PDFDocumentProxy;
 
@@ -21,7 +21,7 @@ function sharedWorker() {
 /** 打开 PDF，bytes 须未加密（先用 unlockPdf 解开）。用完调用 closePdf。 */
 export async function openPdf(bytes: Uint8Array): Promise<PdfDoc> {
   // 四个数据地址都要是绝对网址且以 / 结尾，PDF.js 才会在 worker 里自己取数据（ICC 色彩管理也只在这种模式下启用）
-  const base = new URL(assetBase('render'), location.origin).href;
+  const base = absoluteAssetUrl('render');
   const task = pdfjs.getDocument({
     worker: sharedWorker(),
     data: bytes.slice(), // 会被转移给 worker，复制一份免得调用方的数据失效

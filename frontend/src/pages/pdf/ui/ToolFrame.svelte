@@ -1,7 +1,7 @@
 <script lang="ts">
   import { type Snippet, untrack } from 'svelte';
   import ProgressBar from '../../../components/ProgressBar.svelte';
-  import { bytes, errorText } from '../../../lib/format';
+  import { bytes, errorText, spaced } from '../../../lib/format';
   import { CircleAlert, LoaderCircle, X } from '../../../lib/icons';
   import { type EngineId, engines } from '../../../lib/pdf/engines.svelte';
   import type { OutputFile, Report } from '../../../lib/pdf/files';
@@ -58,11 +58,7 @@
 
   const pending = $derived(engines.pendingBytes(needed));
   const busy = $derived(phase !== 'idle');
-  // 引擎名以西文开头时与前面的中文隔一个空格：“下载 qpdf 页面与加密引擎”“下载思源黑体”
-  const engineLabel = $derived.by(() => {
-    const label = engines.label(needed);
-    return /^[A-Za-z0-9]/.test(label) ? ` ${label}` : label;
-  });
+  const engineLabel = $derived(spaced(engines.label(needed)));
 
   $effect(() => {
     void engines.refresh();

@@ -9,7 +9,8 @@ export const loadPdfLib = () => import('@cantoo/pdf-lib');
 export type PdfLib = Awaited<ReturnType<typeof loadPdfLib>>;
 
 let fontkit: Promise<unknown> | null = null;
-function loadFontkit() {
+/** 子集嵌入 TTF 要用的 fontkit（只加载一次；模块默认导出要解一层） */
+export function loadFontkit() {
   fontkit ??= import('@cantoo/fontkit').then((m) => (m as { default?: unknown }).default ?? m);
   return fontkit;
 }

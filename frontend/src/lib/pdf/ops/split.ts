@@ -4,7 +4,7 @@ import { engines } from '../engines.svelte';
 import { encryptionInfo, QpdfError, runQpdf } from '../engines/qpdf';
 import { type OutputFile, pdfBlob, readBytes, type Report, stem } from '../files';
 import { unlockPdf } from '../input';
-import { expandRanges, formatRanges, parseRanges } from '../ranges';
+import { compactPages, expandRanges, formatRanges, parseRanges } from '../ranges';
 import { countPages } from './pages';
 
 const COMMON = ['--remove-unreferenced-resources=yes', '--object-streams=generate'];
@@ -259,18 +259,6 @@ export interface SplitOptions {
 /** 文件名里的页码：第3页、第1-3页 */
 const pageLabel = (a: number, b: number) => (a === b ? `第${a}页` : `第${a}-${b}页`);
 
-/** 按书写顺序压缩连续页：[4,0,1,2] → "5,1-3"（qpdf 写法，保留用户给的顺序） */
-function orderedSpec(indices: number[]) {
-  const parts: string[] = [];
-  for (let i = 0; i < indices.length; ) {
-    let j = i;
-    while (j + 1 < indices.length && indices[j + 1] === indices[j] + 1) j++;
-    parts.push(i === j ? `${indices[i] + 1}` : `${indices[i] + 1}-${indices[j] + 1}`);
-    i = j + 1;
-  }
-  return parts.join(',');
-}
-
 const span = (start: number, end: number) => Array.from({ length: end - start + 1 }, (_, i) => start - 1 + i);
 
 /** bytes 需未加密（先用 loadPdf） */
@@ -301,9 +289,9 @@ export async function splitPdf(
   }
 
   if (mode === 'extract') {
-    // 去掉重复页，按填写顺序排列
+    // 去掉重复页，按填写顺序排列：[4,0,1,2] → "5,1-3"
     const indices = expandRanges(spec, total);
-    const range = orderedSpec(indices);
+    const range = compactPages(indices.map((i) => i + 1));
     report(null, '正在提取');
     const out = await pickPages(bytes, range, await readOutline(bytes), indices);
     // 页码太零碎时不放进文件名
