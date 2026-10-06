@@ -11,10 +11,9 @@ from app.db import utcnow
 from app.llm import LlmClient, LlmConfig
 from app.meeting import chat
 from app.meeting.schemas import MessageOut
-from app.models import Meeting, MeetingMessage, MeetingSegment, User
+from app.models import Meeting, MeetingMessage
 from app.routers import meeting_chat
-from app.security import new_job_id
-from tests.conftest import add_user, login, update_settings
+from tests.conftest import add_user, login, seed_meeting, update_settings, user_id_of
 from tests.llm_fake import FakeLlmFailure, FakeReply, install_fake_llm, install_transport, plain_sse
 
 LINES = [
@@ -35,43 +34,21 @@ SPEAKERS = {
 }
 
 
-def user_id(app, username: str) -> int:
-    with app.state.ctx.Session() as db:
-        return db.scalar(select(User.id).where(User.username == username))
-
-
 def make_meeting(app, owner: int, lines=LINES, *, speakers=None, minutes: str | None = None) -> str:
-    with app.state.ctx.Session() as db:
-        m = Meeting(
-            id=new_job_id(),
-            user_id=owner,
-            title="周三组会",
-            filename="组会.wav",
-            status="done",
-            duration_ms=(lines[-1][0] + 6000) if lines else 0,
-            speakers=speakers if speakers is not None else SPEAKERS,
-            minutes_md=minutes,
-            minutes_rev=1 if minutes else None,
-            transcript_rev=1,
-            transcript_state="polished" if lines else "none",
-        )
-        db.add(m)
-        db.flush()
-        for i, (start, speaker, text) in enumerate(lines):
-            db.add(
-                MeetingSegment(
-                    meeting_id=m.id,
-                    idx=i,
-                    start_ms=start,
-                    end_ms=start + 5000,
-                    asr_speaker=speaker,
-                    speaker=speaker,
-                    raw_text=text,
-                    text=text,
-                )
-            )
-        db.commit()
-        return m.id
+    """lines: [(开始毫秒, 说话人, 文字)]，每句 5 秒。"""
+    return seed_meeting(
+        app,
+        owner,
+        [(start, start + 5000, speaker, text) for start, speaker, text in lines],
+        title="周三组会",
+        filename="组会.wav",
+        duration_ms=(lines[-1][0] + 6000) if lines else 0,
+        speakers=speakers if speakers is not None else SPEAKERS,
+        minutes_md=minutes,
+        minutes_rev=1 if minutes else None,
+        transcript_rev=1,
+        transcript_state="polished" if lines else "none",
+    )
 
 
 def parse_sse(text: str) -> list[tuple[str, object]]:
@@ -111,7 +88,7 @@ def set_context_chars(client, chars: int) -> None:
 def test_chat_streams_and_stores(app, admin_client):
     answer = "[[S1]] 要求下周交对比图 [00:30]。\n消融实验预计下周三前做完 [00:52]。"
     calls = install_fake_llm(app, lambda messages, payload: FakeReply(answer, tokens=4321))
-    mid = make_meeting(app, user_id(app, "admin"), minutes="# 纪要\n- [[S1]] 布置任务 [00:30]")
+    mid = make_meeting(app, user_id_of(app, "admin"), minutes="# 纪要\n- [[S1]] 布置任务 [00:30]")
 
     resp, events = ask(admin_client, mid, "  老师布置了什么任务？  ")
     assert resp.status_code == 200
@@ -157,7 +134,7 @@ def test_chat_streams_and_stores(app, admin_client):
 
 def test_clear_messages(app, admin_client):
     install_fake_llm(app, lambda messages, payload: "好的")
-    mid = make_meeting(app, user_id(app, "admin"))
+    mid = make_meeting(app, user_id_of(app, "admin"))
     ask(admin_client, mid, "有哪些待办？")
     assert len(admin_client.get(f"/api/meetings/{mid}/messages").json()) == 2
     resp = admin_client.delete(f"/api/meetings/{mid}/messages")
@@ -167,7 +144,7 @@ def test_clear_messages(app, admin_client):
 
 def test_access_and_validation(app, admin_client, client):
     install_fake_llm(app, lambda messages, payload: "好的")
-    admin = user_id(app, "admin")
+    admin = user_id_of(app, "admin")
     mid = make_meeting(app, admin)
     empty = make_meeting(app, admin, lines=[])
 
@@ -191,7 +168,7 @@ def test_llm_error_is_reported(app, admin_client):
         raise FakeLlmFailure(400, "模型不存在")
 
     install_fake_llm(app, fail)
-    mid = make_meeting(app, user_id(app, "admin"))
+    mid = make_meeting(app, user_id_of(app, "admin"))
     resp, events = ask(admin_client, mid, "说了什么？")
     assert resp.status_code == 200
     assert [n for n, _ in events] == ["start", "error"]
@@ -226,7 +203,7 @@ def test_chat_follows_preset_chat_step(app, admin_client):
 
     reply = FakeReply("下周三前做完消融实验。", reasoning="先想一想", reasoning_tokens=50, tokens=900)
     calls = install_fake_llm(app, lambda messages, payload: reply)
-    mid = make_meeting(app, user_id(app, "admin"))
+    mid = make_meeting(app, user_id_of(app, "admin"))
     resp, events = ask(admin_client, mid, "有哪些待办？")
     assert resp.status_code == 200 and events[-1][0] == "done"
     payload = calls[0]
@@ -251,7 +228,7 @@ def test_heartbeat_before_first_text(app, admin_client, monkeypatch):
         return httpx.Response(200, content=plain_sse("想好了"), headers={"content-type": "text/event-stream"})
 
     install_transport(app, slow)
-    mid = make_meeting(app, user_id(app, "admin"))
+    mid = make_meeting(app, user_id_of(app, "admin"))
     resp, events = ask(admin_client, mid, "说了什么？")
     assert "\n: ping\n" in "\n" + resp.text
     names = [n for n, _ in events]
@@ -265,7 +242,7 @@ def test_excerpt_when_transcript_too_long(app, admin_client):
     filler = "这一段在讨论别的事情，和问题没有关系，只是为了把逐字稿撑长一些。"
     lines = [(i * 7000, f"S{i % 3 + 1}", f"{filler}第 {i} 句。") for i in range(600)]
     lines[300] = (300 * 7000, "S2", "消融实验预计下周三之前做完。")
-    mid = make_meeting(app, user_id(app, "admin"), lines)
+    mid = make_meeting(app, user_id_of(app, "admin"), lines)
 
     resp, events = ask(admin_client, mid, "消融实验什么时候做完？")
     assert events[0][1]["excerpt"] is True and events[-1][0] == "done"

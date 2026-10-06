@@ -11,9 +11,8 @@ from docx.oxml.ns import qn
 
 from app.db import utcnow
 from app.meeting.export import ExportData, ExportSegment, file_names, render_markdown, resolve_speaker, turns
-from app.models import Meeting, MeetingSegment
-from app.security import new_job_id
-from tests.conftest import add_user, login
+from app.models import Meeting
+from tests.conftest import add_user, login, seed_meeting
 
 SPEAKERS = {
     "S1": {"name": "张老师", "guess": None, "merged_into": None},
@@ -46,35 +45,18 @@ SEGMENTS = [
 
 
 def make_meeting(app, user_id: int, *, title="周三组会", minutes: str | None = MINUTES, segments=SEGMENTS) -> str:
-    with app.state.ctx.Session() as db:
-        m = Meeting(
-            id=new_job_id(),
-            user_id=user_id,
-            title=title,
-            filename="组会.m4a",
-            status="done",
-            duration_ms=3_730_000,
-            provider_name="模拟识别",
-            speakers=SPEAKERS,
-            minutes_md=minutes,
-            created_at=datetime(2026, 10, 4, 18, 0, tzinfo=UTC),  # 东八区已是 10 月 5 日
-        )
-        db.add(m)
-        for i, (start, end, speaker, raw, text) in enumerate(segments):
-            db.add(
-                MeetingSegment(
-                    meeting_id=m.id,
-                    idx=i,
-                    start_ms=start,
-                    end_ms=end,
-                    asr_speaker=speaker,
-                    speaker=speaker,
-                    raw_text=raw,
-                    text=text,
-                )
-            )
-        db.commit()
-        return m.id
+    return seed_meeting(
+        app,
+        user_id,
+        segments,
+        title=title,
+        filename="组会.m4a",
+        duration_ms=3_730_000,
+        provider_name="模拟识别",
+        speakers=SPEAKERS,
+        minutes_md=minutes,
+        created_at=datetime(2026, 10, 4, 18, 0, tzinfo=UTC),  # 东八区已是 10 月 5 日
+    )
 
 
 @pytest.fixture(autouse=True)

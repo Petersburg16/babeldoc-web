@@ -14,8 +14,16 @@ from app.main import create_app
 from app.meeting import polish, processing, prompts, speakers
 from app.meeting.llm_config import STEPS, PresetSteps, default_step, resolve_meeting_llm
 from app.models import GlossaryTerm, Meeting, MeetingLlmModel, MeetingLlmPreset, MeetingSegment, User
-from app.security import hash_password, new_job_id
-from tests.conftest import add_mock_provider, build_config, make_wav, needs_ffmpeg, upload_audio, wait_meeting
+from app.security import hash_password
+from tests.conftest import (
+    add_mock_provider,
+    build_config,
+    make_wav,
+    needs_ffmpeg,
+    seed_meeting,
+    upload_audio,
+    wait_meeting,
+)
 from tests.llm_fake import FakeLlmFailure, FakeReply, install_fake_llm, numbered_lines, polish_reply, tidy
 
 # ---------- 假大模型的回答 ----------
@@ -82,40 +90,12 @@ def env(tmp_path, monkeypatch):
 def seed(app, lines: list[tuple[str, str]], *, edited: dict[int, str] | None = None, **meeting: Any) -> str:
     """建一场已识别完的会议：lines = [(说话人, 识别原文)]；edited = {序号: 用户改过的文字}。"""
     edited = edited or {}
-    meeting_id = new_job_id()
-    ids = sorted({s for s, _ in lines}, key=lambda s: int(s[1:]))
-    with app.state.ctx.Session() as db:
-        db.add(
-            Meeting(
-                id=meeting_id,
-                user_id=app.state.user_id,
-                title="组会",
-                filename="a.wav",
-                status=meeting.pop("status", "done"),
-                transcript_state="raw",
-                transcript_rev=1,
-                duration_ms=len(lines) * 7000,
-                speakers=meeting.pop("speakers", None)
-                or {s: {"name": "", "guess": None, "merged_into": None} for s in ids},
-                **meeting,
-            )
-        )
-        for i, (speaker, text) in enumerate(lines):
-            db.add(
-                MeetingSegment(
-                    meeting_id=meeting_id,
-                    idx=i,
-                    start_ms=i * 7000,
-                    end_ms=i * 7000 + 6000,
-                    asr_speaker=speaker,
-                    speaker=speaker,
-                    raw_text=text,
-                    text=edited.get(i, text),
-                    edited=i in edited,
-                )
-            )
-        db.commit()
-    return meeting_id
+    segments = [
+        (i * 7000, i * 7000 + 6000, speaker, text, edited.get(i), i in edited)
+        for i, (speaker, text) in enumerate(lines)
+    ]
+    values = {"transcript_state": "raw", "transcript_rev": 1, "duration_ms": len(lines) * 7000, **meeting}
+    return seed_meeting(app, app.state.user_id, segments, **values)
 
 
 def add_llm_model(app, name: str = "会议模型", model: str = "m", **extra: Any) -> int:

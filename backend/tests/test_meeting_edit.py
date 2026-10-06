@@ -11,10 +11,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.meeting import processing
-from app.models import Meeting, MeetingLlmModel, MeetingLlmPreset, MeetingSegment, ModelProfile, User
+from app.models import Meeting, MeetingLlmModel, MeetingLlmPreset
 from app.routers import meeting_edit
-from app.security import new_job_id
-from tests.conftest import ADMIN, add_user, login, wait_until
+from tests.conftest import ADMIN, add_user, login, seed_meeting, user_id_of, wait_until
 from tests.llm_fake import install_fake_llm, polish_reply, tidy
 
 LINES = [
@@ -27,55 +26,26 @@ LINES = [
 
 
 def seed(app, username: str = ADMIN[0], **meeting: Any) -> str:
-    meeting_id = new_job_id()
-    ctx = app.state.ctx
-    with ctx.Session() as db:
-        user_id = db.scalar(select(User.id).where(User.username == username))
-        model_id = db.scalar(select(ModelProfile.id))
-        speakers = {
-            "S1": {"name": "", "guess": {"name": "张老师", "evidence": "我是张老师", "confidence": "high"}},
-            "S2": {"name": "", "guess": {"name": "李明", "evidence": "", "confidence": "low"}},
-            "S3": {"name": "王芳", "guess": {"name": "王五", "evidence": "", "confidence": "low"}},
-        }
-        for info in speakers.values():
-            info["merged_into"] = None
-        values: dict[str, Any] = {
-            "status": "done",
-            "transcript_state": "raw",
-            "transcript_rev": 3,
-            "minutes_state": "ready",
-            "minutes_md": "# 纪要\n- [[S1]] 要求 [00:21] 发对比图",
-            "minutes_rev": 3,
-            "speakers": speakers,
-            "progress": 100,
-            **meeting,
-        }
-        db.add(
-            Meeting(
-                id=meeting_id,
-                user_id=user_id,
-                title="组会",
-                filename="a.wav",
-                duration_ms=40_000,
-                model_id=model_id,
-                **values,
-            )
-        )
-        for i, (speaker, text) in enumerate(LINES):
-            db.add(
-                MeetingSegment(
-                    meeting_id=meeting_id,
-                    idx=i,
-                    start_ms=i * 7000,
-                    end_ms=i * 7000 + 6000,
-                    asr_speaker=speaker,
-                    speaker=speaker,
-                    raw_text=text,
-                    text=text,
-                )
-            )
-        db.commit()
-    return meeting_id
+    speakers = {
+        "S1": {"name": "", "guess": {"name": "张老师", "evidence": "我是张老师", "confidence": "high"}},
+        "S2": {"name": "", "guess": {"name": "李明", "evidence": "", "confidence": "low"}},
+        "S3": {"name": "王芳", "guess": {"name": "王五", "evidence": "", "confidence": "low"}},
+    }
+    for info in speakers.values():
+        info["merged_into"] = None
+    values: dict[str, Any] = {
+        "duration_ms": 40_000,
+        "transcript_state": "raw",
+        "transcript_rev": 3,
+        "minutes_state": "ready",
+        "minutes_md": "# 纪要\n- [[S1]] 要求 [00:21] 发对比图",
+        "minutes_rev": 3,
+        "speakers": speakers,
+        "progress": 100,
+        **meeting,
+    }
+    segments = [(i * 7000, i * 7000 + 6000, speaker, text) for i, (speaker, text) in enumerate(LINES)]
+    return seed_meeting(app, user_id_of(app, username), segments, **values)
 
 
 def segments(client: TestClient, mid: str) -> list[dict]:

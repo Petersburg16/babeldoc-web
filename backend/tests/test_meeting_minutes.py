@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import secrets
 import time
 from functools import partial
 from types import SimpleNamespace
@@ -21,49 +20,18 @@ from app.meeting.minutes import (
     transcript_lines,
 )
 from app.meeting.schemas import MeetingOut
-from app.models import Meeting, MeetingSegment, User
+from app.models import Meeting
 from app.settings_store import load_settings, save_settings
-from tests.conftest import ADMIN, wait_until
+from tests.conftest import seed_meeting, user_id_of, wait_until
 from tests.llm_fake import FakeLlmFailure, install_fake_llm
 
 MIN = 60_000
 
 
-def make_meeting(app, segments, *, duration_ms: int, speakers=None, **extra) -> str:
-    """直接在库里造一场已完成的会议。segments: [(start_ms, end_ms, speaker, text)]"""
-    mid = secrets.token_hex(8)
-    if speakers is None:
-        speakers = {s[2]: {"name": "", "guess": None, "merged_into": None} for s in segments}
-    with app.state.ctx.Session() as db:
-        user_id = db.query(User).filter_by(username=ADMIN[0]).one().id
-        values = {"title": "周三组会", "transcript_rev": 1, "transcript_state": "polished", **extra}
-        db.add(
-            Meeting(
-                id=mid,
-                user_id=user_id,
-                status="done",
-                filename="a.wav",
-                duration_ms=duration_ms,
-                speakers=speakers,
-                **values,
-            )
-        )
-        db.flush()
-        for i, (start, end, speaker, text) in enumerate(segments):
-            db.add(
-                MeetingSegment(
-                    meeting_id=mid,
-                    idx=i,
-                    start_ms=start,
-                    end_ms=end,
-                    asr_speaker=speaker,
-                    speaker=speaker,
-                    raw_text=text,
-                    text=text,
-                )
-            )
-        db.commit()
-    return mid
+def make_meeting(app, segments, *, duration_ms: int, **extra) -> str:
+    """管理员名下一场整理好的会议。segments: [(start_ms, end_ms, speaker, text)]"""
+    values = {"title": "周三组会", "transcript_rev": 1, "transcript_state": "polished", **extra}
+    return seed_meeting(app, user_id_of(app), segments, duration_ms=duration_ms, **values)
 
 
 def long_meeting(app, minutes: int = 55) -> str:

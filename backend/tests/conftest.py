@@ -16,11 +16,12 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from pypdf import PdfWriter
+from sqlalchemy import select
 
 from app.config import Config, load_config
 from app.main import create_app
-from app.models import User
-from app.security import hash_password
+from app.models import Meeting, MeetingSegment, User
+from app.security import hash_password, new_job_id
 
 ADMIN = ("admin", "admin-password")
 # gpt-6-astra 的内置思考档位表，也是中转报错里列出的可用档位
@@ -86,6 +87,11 @@ def add_user(app, username: str, password: str, role: str = "user", **extra) -> 
         db.add(user)
         db.commit()
         return user.id
+
+
+def user_id_of(app, username: str = ADMIN[0]) -> int:
+    with app.state.ctx.Session() as db:
+        return db.scalar(select(User.id).where(User.username == username))
 
 
 def login(client: TestClient, username: str, password: str) -> None:
@@ -211,6 +217,39 @@ def upload_audio(client: TestClient, data: bytes, filename: str = "组会.wav", 
     done = client.post(f"/api/meetings/{meeting_id}/upload/complete")
     assert done.status_code == 200, done.text
     return done.json()
+
+
+def seed_meeting(app, user_id: int, segments, **fields: Any) -> str:
+    """直接在库里造一场识别完的会议，返回会议号。
+
+    segments：[(开始毫秒, 结束毫秒, 说话人, 识别原文[, 整理后的文字[, 用户改过]])]，整理后的文字省略或为 None 时同原文；
+    fields：Meeting 的其他字段，覆盖下面的默认值。说话人表默认按编号排好、都还没起名。"""
+    meeting_id = new_job_id()
+    values: dict[str, Any] = {"title": "组会", "filename": "a.wav", "status": "done", **fields}
+    if values.get("speakers") is None:
+        ids = sorted({seg[2] for seg in segments}, key=lambda s: int(s[1:]))
+        values["speakers"] = {s: {"name": "", "guess": None, "merged_into": None} for s in ids}
+    with app.state.ctx.Session() as db:
+        db.add(Meeting(id=meeting_id, user_id=user_id, **values))
+        db.flush()
+        for i, (start, end, speaker, raw, *rest) in enumerate(segments):
+            text = rest[0] if rest and rest[0] is not None else raw
+            edited = bool(rest[1]) if len(rest) > 1 else False
+            db.add(
+                MeetingSegment(
+                    meeting_id=meeting_id,
+                    idx=i,
+                    start_ms=start,
+                    end_ms=end,
+                    asr_speaker=speaker,
+                    speaker=speaker,
+                    raw_text=raw,
+                    text=text,
+                    edited=edited,
+                )
+            )
+        db.commit()
+    return meeting_id
 
 
 def wait_meeting(client: TestClient, meeting_id: str, statuses: set[str], timeout: float = 30) -> dict:
