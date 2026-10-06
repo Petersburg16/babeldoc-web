@@ -3,12 +3,6 @@
   import { EFFORT_LABELS } from './LlmModelModal.svelte';
 
   export const STEPS: LlmStep[] = ['speakers', 'polish', 'minutes', 'chat'];
-  export const STEP_LABELS: Record<LlmStep, string> = {
-    speakers: '猜说话人',
-    polish: '整理逐字稿',
-    minutes: '生成纪要',
-    chat: '对话问答',
-  };
   // 与后端 DEFAULT_TIMEOUTS 一致
   const DEFAULT_TIMEOUTS: Record<LlmStep, number> = { speakers: 300, polish: 300, minutes: 900, chat: 600 };
 
@@ -78,6 +72,7 @@
   import { errorText } from '../../lib/format';
   import { ChevronDown, CircleCheck, CircleX, Copy, FlaskConical, LoaderCircle, Plus, Trash2, TriangleAlert } from '../../lib/icons';
   import { meetingApi } from '../../lib/meeting/api';
+  import { STEP_LABELS } from '../../lib/meeting/format';
   import type { LlmModelAdmin, LlmTestResult, PresetAdmin, PresetSteps } from '../../lib/meeting/types';
   import { failedTest, testSummary } from './LlmModelModal.svelte';
 

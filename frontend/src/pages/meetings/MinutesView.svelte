@@ -4,9 +4,9 @@
   import { copyText, dateTime, relativeTime } from '../../lib/format';
   import { CircleAlert, Copy, LoaderCircle, RefreshCw, Sparkles, TriangleAlert } from '../../lib/icons';
   import { meetingApi } from '../../lib/meeting/api';
-  import { fillSpeakers, isActive, meetingStageLabel } from '../../lib/meeting/format';
+  import { fillSpeakers, isActive, meetingStageLabel, STEP_LABELS } from '../../lib/meeting/format';
   import { NotebookPen } from '../../lib/meeting/icons';
-  import type { MeetingDetail, MeetingOp } from '../../lib/meeting/types';
+  import type { MeetingDetail } from '../../lib/meeting/types';
   import { meetings } from '../../lib/meetings.svelte';
   import { toast } from '../../lib/toast.svelte';
   import MeetingMarkdown from './MeetingMarkdown.svelte';
@@ -16,12 +16,6 @@
 
   let modalOpen = $state(false);
   let starting = $state(false);
-
-  const OP_LABELS: Record<MeetingOp, string> = {
-    speakers: '正在识别说话人…',
-    polish: '正在整理逐字稿…',
-    minutes: '正在生成纪要…',
-  };
 
   const templates = $derived(meetings.options?.templates ?? []);
   const templateName = $derived.by(() => {
@@ -38,7 +32,7 @@
   const pipeline = $derived(isActive(meeting));
   const busy = $derived(starting || meeting.op !== null || pipeline);
   // 生成纪要时下面有进度卡片，工具栏就不重复提示了
-  const busyText = $derived(generating ? '' : meeting.op ? OP_LABELS[meeting.op] : pipeline ? '会议还在处理中…' : '');
+  const busyText = $derived(generating ? '' : meeting.op ? `正在${STEP_LABELS[meeting.op]}…` : pipeline ? '会议还在处理中…' : '');
 
   onMount(() => {
     if (!meetings.options) void meetings.loadOptions().catch((e) => toast.error(e));

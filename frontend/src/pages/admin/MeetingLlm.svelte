@@ -17,11 +17,12 @@
     TriangleAlert,
   } from '../../lib/icons';
   import { meetingApi } from '../../lib/meeting/api';
+  import { STEP_LABELS } from '../../lib/meeting/format';
   import type { LlmModelAdmin, LlmTestResult, PresetAdmin } from '../../lib/meeting/types';
   import { toast } from '../../lib/toast.svelte';
   import type { ModelAdmin } from '../../lib/types';
   import LlmModelModal, { EFFORT_LABELS, failedTest, testSummary } from './LlmModelModal.svelte';
-  import PresetModal, { STEPS, STEP_LABELS, effortShort, stepFacts } from './PresetModal.svelte';
+  import PresetModal, { STEPS, effortShort, stepFacts } from './PresetModal.svelte';
 
   let models = $state<LlmModelAdmin[]>([]);
   let presets = $state<PresetAdmin[]>([]);
@@ -231,7 +232,7 @@
           <div class="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent"><BrainCircuit class="size-6" /></div>
           <p class="mt-4 font-medium">还没有会议用的大模型</p>
           <p class="mt-1 max-w-sm text-[13px] text-muted">
-            添加一个 OpenAI 兼容的接口，可以直接复制翻译模型的地址和 Key。会议记录要靠它猜说话人、整理逐字稿、写纪要。
+            添加一个 OpenAI 兼容的接口，可以直接复制翻译模型的地址和 Key。会议记录要靠它识别说话人、整理逐字稿、写纪要。
           </p>
           <button class="btn btn-primary mt-5" onclick={() => (editingModel = 'new')}><Plus class="size-4" />添加模型</button>
         </div>
@@ -319,7 +320,7 @@
           <p class="mt-4 font-medium">还没有整理方案</p>
           <p class="mt-1 max-w-sm text-[13px] text-muted">
             {models.length
-              ? '方案决定猜说话人、整理逐字稿、生成纪要和对话问答各用哪个模型、什么参数。没有方案时会议没法整理。'
+              ? '方案决定识别说话人、整理逐字稿、生成纪要和对话问答各用哪个模型、什么参数。没有方案时会议没法整理。'
               : '先在上面添加模型，再把模型组合成方案。添加模型时也可以顺带建一个方案。'}
           </p>
           {#if models.length}

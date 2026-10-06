@@ -1,5 +1,5 @@
 import { expiryLabel } from '../format';
-import type { Meeting, MeetingStatus, Segment, SpeakerInfo } from './types';
+import type { LlmStep, Meeting, MeetingStatus, Segment, SpeakerInfo } from './types';
 
 /** 毫秒 → 1:02:03 或 02:03 */
 export function clock(ms: number) {
@@ -110,6 +110,14 @@ export function speakerTone(id: string) {
   return SPEAKER_TONES[(n - 1) % SPEAKER_TONES.length];
 }
 
+/** 大模型的四个用途；前三个也是会议的处理阶段和可以单独重跑的操作，进度、整理方案、操作提示都用这一份中文名 */
+export const STEP_LABELS: Record<LlmStep, string> = {
+  speakers: '识别说话人',
+  polish: '整理逐字稿',
+  minutes: '生成纪要',
+  chat: '对话问答',
+};
+
 const STAGES: Record<string, string> = {
   upload: '上传中',
   transcode: '转换音频格式',
@@ -117,9 +125,9 @@ const STAGES: Record<string, string> = {
   asr_submit: '提交给识别服务',
   asr_wait: '语音识别中',
   asr_merge: '合并识别结果',
-  speakers: '识别说话人',
-  polish: '整理逐字稿',
-  minutes: '生成纪要',
+  speakers: STEP_LABELS.speakers,
+  polish: STEP_LABELS.polish,
+  minutes: STEP_LABELS.minutes,
 };
 
 export function meetingStageLabel(stage: string) {
