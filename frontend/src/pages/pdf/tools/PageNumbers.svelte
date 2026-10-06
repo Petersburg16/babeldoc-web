@@ -7,6 +7,7 @@
   import { readUserPdf } from '../../../lib/pdf/input';
   import type { Align, NumberFormat, Vertical } from '../../../lib/pdf/ops/pagenumbers';
   import { rangeError } from '../../../lib/pdf/ranges';
+  import PageRangeField from '../ui/PageRangeField.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   const FORMATS: { id: NumberFormat; label: (n: number) => string; zh?: boolean }[] = [
@@ -165,21 +166,15 @@
       </div>
     </div>
 
-    <div>
-      <label class="label" for="pn-pages">加页码的页 <span class="font-normal text-muted">（可选）</span></label>
-      <input
-        id="pn-pages"
-        class="field font-mono text-[13px]"
-        placeholder="全部页"
-        bind:value={pages}
-        aria-invalid={!!rangeErr}
-      />
-      {#if rangeErr}
-        <p class="mt-1 text-[12px] text-bad-ink">{rangeErr}</p>
-      {:else}
-        <p class="hint">例如填 2- 跳过封面，编号仍从起始页码开始</p>
-      {/if}
-    </div>
+    <PageRangeField
+      id="pn-pages"
+      label="加页码的页"
+      optional
+      placeholder="全部页"
+      bind:value={pages}
+      error={rangeErr}
+      hint="例如填 2- 跳过封面，编号仍从起始页码开始"
+    />
 
     {#if zh}
       <div>

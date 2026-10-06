@@ -3,6 +3,7 @@
   import { renamed, type Report } from '../../../lib/pdf/files';
   import { readUserPdf } from '../../../lib/pdf/input';
   import { expandRanges, rangeError } from '../../../lib/pdf/ranges';
+  import PageRangeField from '../ui/PageRangeField.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   let files = $state<File[]>([]);
@@ -57,22 +58,14 @@
     <FilePicker bind:files accept="application/pdf,.pdf" hint="加密的 PDF 会先询问密码" />
   {/snippet}
   {#snippet options()}
-    <div>
-      <label class="label" for="pdf2word-pages">页码范围</label>
-      <input
-        id="pdf2word-pages"
-        class="field font-mono text-[13px]"
-        placeholder="全部页"
-        bind:value={pages}
-        aria-invalid={!!badRange}
-        aria-describedby="pdf2word-pages-hint"
-      />
-      {#if badRange}
-        <p id="pdf2word-pages-hint" class="mt-1 text-[12px] text-bad-ink">{badRange}</p>
-      {:else}
-        <p id="pdf2word-pages-hint" class="hint">例如 1-3,5,8-，留空转换全部页</p>
-      {/if}
-    </div>
+    <PageRangeField
+      id="pdf2word-pages"
+      label="页码范围"
+      placeholder="全部页"
+      bind:value={pages}
+      error={badRange}
+      hint="例如 1-3,5,8-，留空转换全部页"
+    />
     <p class="text-[12.5px] leading-snug text-muted">多栏排版、公式较多的页面转换后可能需要在 Word 里再调整。</p>
   {/snippet}
   {#snippet summary()}

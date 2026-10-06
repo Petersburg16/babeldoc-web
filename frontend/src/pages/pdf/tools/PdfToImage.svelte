@@ -5,6 +5,7 @@
   import { readUserPdf } from '../../../lib/pdf/input';
   import type { ImageFormat } from '../../../lib/pdf/ops/images';
   import { rangeError } from '../../../lib/pdf/ranges';
+  import PageRangeField from '../ui/PageRangeField.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   let files = $state<File[]>([]);
@@ -88,11 +89,7 @@
       />
       <p class="hint">{dpiHint[dpi]}</p>
     </div>
-    <div>
-      <label class="label" for="img-pages">页码范围 <span class="font-normal text-muted">（可选）</span></label>
-      <input id="img-pages" class="field font-mono text-[13px] placeholder:font-sans" placeholder="全部页，或如 1-3,5,8-" bind:value={pages} aria-invalid={!!error} />
-      {#if error}<p class="mt-1 text-[12px] text-bad-ink">{error}</p>{/if}
-    </div>
+    <PageRangeField id="img-pages" label="页码范围" optional placeholder="全部页，或如 1-3,5,8-" bind:value={pages} {error} />
   {/snippet}
   {#snippet summary(outputs)}
     {#if info}

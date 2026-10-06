@@ -10,6 +10,7 @@
   import { readUserPdf } from '../../../lib/pdf/input';
   import type { Watermark } from '../../../lib/pdf/ops/watermark';
   import { rangeError } from '../../../lib/pdf/ranges';
+  import PageRangeField from '../ui/PageRangeField.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   type Kind = 'text' | 'image';
@@ -256,11 +257,7 @@
         ]}
       />
     </div>
-    <div>
-      <label class="label" for="wm-pages">页码范围 <span class="font-normal text-muted">（可选）</span></label>
-      <input id="wm-pages" class="field font-mono text-[13px] placeholder:font-sans" placeholder="全部页，或如 1-3,5,8-" bind:value={pages} aria-invalid={!!pagesError} />
-      {#if pagesError}<p class="mt-1 text-[12px] text-bad-ink">{pagesError}</p>{/if}
-    </div>
+    <PageRangeField id="wm-pages" label="页码范围" optional placeholder="全部页，或如 1-3,5,8-" bind:value={pages} error={pagesError} />
   {/snippet}
 
   {#snippet summary()}

@@ -9,6 +9,7 @@
   import type { OcrLanguage, OcrResult } from '../../../lib/pdf/ops/ocr';
   import { rangeError } from '../../../lib/pdf/ranges';
   import { toast } from '../../../lib/toast.svelte';
+  import PageRangeField from '../ui/PageRangeField.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   let files = $state<File[]>([]);
@@ -90,15 +91,14 @@
       />
       <p class="hint">300 dpi 更准，字小的扫描件建议用；200 dpi 更快</p>
     </div>
-    <div>
-      <label class="label" for="ocr-range">页码范围</label>
-      <input id="ocr-range" class="field font-mono text-[13px]" placeholder="全部页" bind:value={range} aria-invalid={!!badRange} />
-      {#if badRange}
-        <p class="mt-1 text-[12px] text-bad-ink">{badRange}</p>
-      {:else}
-        <p class="hint">例如 1-3,5,8-；每页约需数秒</p>
-      {/if}
-    </div>
+    <PageRangeField
+      id="ocr-range"
+      label="页码范围"
+      placeholder="全部页"
+      bind:value={range}
+      error={badRange}
+      hint="例如 1-3,5,8-；每页约需数秒"
+    />
     <Switch bind:checked={skipText} label="跳过已有文字的页" description="这些页本来就能搜索，再识别会叠出两层文字" />
   {/snippet}
   {#snippet summary()}

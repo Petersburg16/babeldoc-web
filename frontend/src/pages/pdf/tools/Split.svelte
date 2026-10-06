@@ -4,8 +4,10 @@
   import { LoaderCircle } from '../../../lib/icons';
   import { stem, type Report } from '../../../lib/pdf/files';
   import { readUserPdf } from '../../../lib/pdf/input';
-  import type { PdfInfo, SplitMode } from '../../../lib/pdf/ops/split';
+  import type { SplitMode } from '../../../lib/pdf/ops/split';
+  import { PdfProbe } from '../../../lib/pdf/probe.svelte';
   import { parseRanges, rangeError } from '../../../lib/pdf/ranges';
+  import PageRangeField from '../ui/PageRangeField.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   const MODES: { value: SplitMode; label: string; hint: string }[] = [
@@ -19,13 +21,12 @@
   let mode = $state<SplitMode>('ranges');
   let spec = $state('');
   let every = $state<number | null>(2);
-  let probe = $state<{ file: File; info: PdfInfo | null } | null>(null);
   let wasEncrypted = $state(false);
 
   const file = $derived(files[0]);
-  const info = $derived(probe && probe.file === file ? probe.info : null);
-  const probing = $derived(!!file && probe?.file !== file);
-  const total = $derived(info?.pages);
+  // 选好文件就读一下页数，用来校验页码、预告会生成几个文件
+  const probe = new PdfProbe(() => file);
+  const total = $derived(probe.total);
   const needsSpec = $derived(mode === 'ranges' || mode === 'extract');
   const specError = $derived(needsSpec && spec.trim() ? rangeError(spec, total) : '');
   const everyOk = $derived(typeof every === 'number' && Number.isInteger(every) && every >= 1);
@@ -39,28 +40,12 @@
   });
   const ready = $derived(needsSpec ? !!spec.trim() && !specError : mode === 'every' ? everyOk : true);
 
-  // 选好文件就读一下页数（qpdf 很小，顺便预先下载），用来校验页码、预告会生成几个文件
-  $effect(() => {
-    const current = file;
-    if (!current) return;
-    let stale = false;
-    void import('../../../lib/pdf/ops/split')
-      .then(({ inspectPdf }) => inspectPdf(current))
-      .catch(() => null)
-      .then((result) => {
-        if (!stale) probe = { file: current, info: result };
-      });
-    return () => {
-      stale = true;
-    };
-  });
-
   async function run(report: Report) {
     const { splitPdf } = await import('../../../lib/pdf/ops/split');
     report(null, `读取「${file.name}」`);
     const pdf = await readUserPdf(file, { countPages: true });
     wasEncrypted = pdf.encrypted;
-    probe = { file, info: { pages: pdf.pages, locked: false, broken: false } };
+    probe.learned(file, pdf.pages);
     return splitPdf(file.name, pdf.bytes, pdf.pages, { mode, spec, every: every ?? 1 }, report);
   }
 </script>
@@ -96,23 +81,14 @@
     </div>
 
     {#if needsSpec}
-      <div>
-        <label class="label" for="split-spec">{mode === 'extract' ? '要提取的页' : '页码范围'}</label>
-        <input
-          id="split-spec"
-          class="field font-mono text-[13px]"
-          placeholder={mode === 'extract' ? '如 1,3,5-8' : '如 1-3,4-6,7-'}
-          autocomplete="off"
-          bind:value={spec}
-          aria-invalid={!!specError}
-          aria-describedby="split-spec-note"
-        />
-        {#if specError}
-          <p id="split-spec-note" class="mt-1 text-[12px] text-bad-ink">{specError}</p>
-        {:else}
-          <p id="split-spec-note" class="hint">“7-”表示第 7 页到末页，“-3”表示前 3 页</p>
-        {/if}
-      </div>
+      <PageRangeField
+        id="split-spec"
+        label={mode === 'extract' ? '要提取的页' : '页码范围'}
+        placeholder={mode === 'extract' ? '如 1,3,5-8' : '如 1-3,4-6,7-'}
+        bind:value={spec}
+        error={specError}
+        hint="“7-”表示第 7 页到末页，“-3”表示前 3 页"
+      />
     {:else if mode === 'every'}
       <div>
         <label class="label" for="split-every">每份页数</label>
@@ -122,11 +98,11 @@
 
     {#if file}
       <div class="rounded-lg bg-surface-2 px-3 py-2 text-[12.5px] leading-relaxed text-ink-2" aria-live="polite">
-        {#if probing}
+        {#if probe.probing}
           <span class="flex items-center gap-1.5 text-muted"><LoaderCircle class="size-3.5 animate-spin" />正在读取页数…</span>
-        {:else if info?.locked}
+        {:else if probe.info?.locked}
           文件有打开密码，开始处理时会询问
-        {:else if info?.broken}
+        {:else if probe.info?.broken}
           <span class="text-warn-ink">读不出页数，文件可能已损坏</span>
         {:else if total}
           共 {total} 页{#if planned}，将生成 {planned} 个文件{/if}

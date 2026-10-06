@@ -4,8 +4,10 @@
   import { LoaderCircle } from '../../../lib/icons';
   import { pdfBlob, renamed, type Report } from '../../../lib/pdf/files';
   import { readUserPdf } from '../../../lib/pdf/input';
-  import type { Angle, PdfInfo } from '../../../lib/pdf/ops/split';
+  import type { Angle } from '../../../lib/pdf/ops/split';
+  import { PdfProbe } from '../../../lib/pdf/probe.svelte';
   import { rangeError } from '../../../lib/pdf/ranges';
+  import PageRangeField from '../ui/PageRangeField.svelte';
   import ToolFrame from '../ui/ToolFrame.svelte';
 
   type AngleValue = '90' | '180' | '270';
@@ -13,39 +15,22 @@
   let files = $state<File[]>([]);
   let angle = $state<AngleValue>('90');
   let spec = $state('');
-  let probe = $state<{ file: File; info: PdfInfo | null } | null>(null);
   let wasEncrypted = $state(false);
 
   const file = $derived(files[0]);
-  const info = $derived(probe && probe.file === file ? probe.info : null);
-  const probing = $derived(!!file && probe?.file !== file);
-  const total = $derived(info?.pages);
+  // 选好文件就读一下页数，用来校验页码
+  const probe = new PdfProbe(() => file);
+  const total = $derived(probe.total);
   const specError = $derived(spec.trim() ? rangeError(spec, total) : '');
   // 预览图：向左 90° 显示为 -90°，动画方向与实际一致
   const preview = $derived(angle === '270' ? -90 : Number(angle));
-
-  // 选好文件就读一下页数（qpdf 很小，顺便预先下载），用来校验页码
-  $effect(() => {
-    const current = file;
-    if (!current) return;
-    let stale = false;
-    void import('../../../lib/pdf/ops/split')
-      .then(({ inspectPdf }) => inspectPdf(current))
-      .catch(() => null)
-      .then((result) => {
-        if (!stale) probe = { file: current, info: result };
-      });
-    return () => {
-      stale = true;
-    };
-  });
 
   async function run(report: Report) {
     const { rotatePdf } = await import('../../../lib/pdf/ops/split');
     report(null, `读取「${file.name}」`);
     const pdf = await readUserPdf(file, { countPages: true });
     wasEncrypted = pdf.encrypted;
-    probe = { file, info: { pages: pdf.pages, locked: false, broken: false } };
+    probe.learned(file, pdf.pages);
     report(null, '正在旋转');
     const out = await rotatePdf(pdf.bytes, pdf.pages, Number(angle) as Angle, spec);
     return [{ name: renamed(file.name, '已旋转'), blob: pdfBlob(out) }];
@@ -95,34 +80,30 @@
       </div>
     </div>
 
-    <div>
-      <label class="label" for="rotate-spec">页码范围 <span class="font-normal text-muted">（可选）</span></label>
-      <input
-        id="rotate-spec"
-        class="field font-mono text-[13px]"
-        placeholder="全部页"
-        autocomplete="off"
-        bind:value={spec}
-        aria-invalid={!!specError}
-        aria-describedby="rotate-spec-note"
-      />
-      <p id="rotate-spec-note" class={specError ? 'mt-1 text-[12px] text-bad-ink' : 'hint'}>
-        {#if specError}
-          {specError}
-        {:else if probing}
-          <span class="inline-flex items-center gap-1"><LoaderCircle class="size-3 animate-spin" />正在读取页数…</span>
-        {:else if info?.locked}
-          文件有打开密码，开始处理时会询问；例如 1-3,5
-        {:else if info?.broken}
-          <span class="text-warn-ink">读不出页数，文件可能已损坏</span>
-        {:else if total}
-          共 {total} 页，例如 1-3,5；留空旋转全部页
-        {:else}
-          例如 1-3,5；留空旋转全部页
-        {/if}
-      </p>
-    </div>
+    <PageRangeField
+      id="rotate-spec"
+      label="页码范围"
+      optional
+      placeholder="全部页"
+      bind:value={spec}
+      error={specError}
+      hint={specHint}
+    />
   {/snippet}
 </ToolFrame>
+
+{#snippet specHint()}
+  {#if probe.probing}
+    <span class="inline-flex items-center gap-1"><LoaderCircle class="size-3 animate-spin" />正在读取页数…</span>
+  {:else if probe.info?.locked}
+    文件有打开密码，开始处理时会询问；例如 1-3,5
+  {:else if probe.info?.broken}
+    <span class="text-warn-ink">读不出页数，文件可能已损坏</span>
+  {:else if total}
+    共 {total} 页，例如 1-3,5；留空旋转全部页
+  {:else}
+    例如 1-3,5；留空旋转全部页
+  {/if}
+{/snippet}
 
 {#snippet unlockedNote()}原文件带有密码或权限限制，导出的文件已不再加密。{/snippet}
