@@ -6,8 +6,6 @@
   import Toasts from './components/Toasts.svelte';
   import { onUnauthorized } from './lib/api';
   import { events } from './lib/events.svelte';
-  import { jobs } from './lib/jobs.svelte';
-  import { meetings } from './lib/meetings.svelte';
   import { interceptLinks, router } from './lib/router.svelte';
   import { session } from './lib/session.svelte';
   import Account from './pages/Account.svelte';
@@ -21,14 +19,9 @@
 
   const PUBLIC = new Set(['/login', '/register']);
 
-  onUnauthorized(() => {
-    session.me = null;
-    events.disconnect();
-    jobs.reset();
-    meetings.reset();
-  });
+  onUnauthorized(() => session.signOut());
 
-  // 登录后连上全站唯一的事件流（翻译任务、会议记录、后台测试结果都走它）
+  // 登录后连上全站唯一的事件流（翻译任务、会议记录、后台测试结果都走它）；退出登录、401 时随 me 清空而断开
   $effect(() => {
     if (session.me) events.connect();
     else events.disconnect();
@@ -52,7 +45,7 @@
   });
 
   $effect(() => {
-    document.title = session.meta?.site_name ?? 'BabelDOC Web';
+    document.title = session.siteName;
   });
 
   const Page = $derived.by(() => {

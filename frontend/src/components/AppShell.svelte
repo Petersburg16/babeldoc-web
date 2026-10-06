@@ -2,9 +2,6 @@
   import type { Snippet } from 'svelte';
   import { api } from '../lib/api';
   import { AudioLines, ChevronDown, FileCog, Languages, LogOut, Monitor, Moon, Shield, Sun, UserRound } from '../lib/icons';
-  import { events } from '../lib/events.svelte';
-  import { jobs } from '../lib/jobs.svelte';
-  import { meetings } from '../lib/meetings.svelte';
   import { router } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
   import { theme } from '../lib/theme.svelte';
@@ -26,10 +23,7 @@
     } catch (e) {
       toast.error(e);
     }
-    events.disconnect();
-    jobs.reset();
-    meetings.reset();
-    session.me = null;
+    session.signOut();
     router.go('/login', { replace: true });
   }
 </script>
@@ -39,7 +33,7 @@
     <div class="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:gap-5 sm:px-6">
       <a href="/" class="flex min-w-0 items-center gap-2.5 font-semibold tracking-tight">
         <Logo class="size-7 shrink-0" />
-        <span class="truncate text-[15px]">{session.meta?.site_name ?? 'BabelDOC Web'}</span>
+        <span class="truncate text-[15px]">{session.siteName}</span>
       </a>
       <nav class="flex items-center gap-1 text-[13.5px]">
         <a href="/" class="nav-link" class:active={router.path === '/'}>

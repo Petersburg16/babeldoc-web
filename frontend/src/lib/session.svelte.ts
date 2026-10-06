@@ -1,4 +1,6 @@
 import { api } from './api';
+import { jobs } from './jobs.svelte';
+import { meetings } from './meetings.svelte';
 import type { Me, Meta } from './types';
 
 class Session {
@@ -13,6 +15,11 @@ class Session {
 
   get isAdmin() {
     return this.me?.user.role === 'admin';
+  }
+
+  /** 站点名称，元信息还没拿到时用默认名 */
+  get siteName() {
+    return this.meta?.site_name ?? 'BabelDOC Web';
   }
 
   languageLabel(code: string) {
@@ -36,6 +43,13 @@ class Session {
 
   async refreshMeta() {
     this.meta = await api.meta();
+  }
+
+  /** 退出登录或登录失效：清掉登录态和按用户隔离的列表；事件流由 App.svelte 跟着 me 断开 */
+  signOut() {
+    this.me = null;
+    jobs.reset();
+    meetings.reset();
   }
 }
 

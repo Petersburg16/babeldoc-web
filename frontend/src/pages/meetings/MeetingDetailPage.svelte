@@ -83,7 +83,7 @@
   const doneParts =$derived(meeting ? meeting.parts.filter((p) => p.state === 'done').length : 0);
 
   // 不用 document.title 取站名：换会议时新旧页面的创建和销毁顺序不保证，可能取到上一场会议的标题
-  const siteTitle = $derived(session.meta?.site_name ?? 'BabelDOC Web');
+  const siteTitle = $derived(session.siteName);
 
   function isTab(value: string | null): value is Tab {
     return value === 'minutes' || value === 'transcript' || value === 'chat';

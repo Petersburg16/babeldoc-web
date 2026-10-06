@@ -14,7 +14,7 @@
   <div class="relative w-full max-w-[390px]">
     <div class="mb-7 flex flex-col items-center text-center">
       <Logo class="size-12" />
-      <h1 class="mt-4 text-[22px] font-semibold tracking-tight">{session.meta?.site_name ?? 'BabelDOC Web'}</h1>
+      <h1 class="mt-4 text-[22px] font-semibold tracking-tight">{session.siteName}</h1>
       <p class="mt-1 text-[13.5px] text-muted">{subtitle}</p>
     </div>
     <div class="card p-6 shadow-pop sm:p-7">
