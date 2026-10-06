@@ -14,11 +14,24 @@
 
   let { open, title, description, size = 'md', onclose, children, footer }: Props = $props();
   let dialog = $state<HTMLDialogElement>();
+  // 打开前有焦点的元素（通常是打开弹窗的按钮），弹窗关着时为 null
+  let opener: HTMLElement | null = null;
 
   $effect(() => {
     if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
+    if (open && !dialog.open) {
+      opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      dialog.showModal();
+    }
+    if (!open && dialog.open) {
+      dialog.close();
+      opener = null;
+    }
+  });
+
+  // dialog.close() 会自己把焦点还给打开前的元素；弹窗开着时被父组件用 {#if} 直接卸载就不会（卸载时 dialog 已离开文档），这里补上
+  $effect(() => () => {
+    if (opener?.isConnected) opener.focus();
   });
 
   const widths = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl' };

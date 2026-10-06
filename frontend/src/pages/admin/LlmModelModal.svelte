@@ -39,7 +39,7 @@
 </script>
 
 <script lang="ts">
-  import { flushSync, tick } from 'svelte';
+  import { tick } from 'svelte';
   import Modal from '../../components/Modal.svelte';
   import Switch from '../../components/Switch.svelte';
   import { LoaderCircle } from '../../lib/icons';
@@ -60,14 +60,6 @@
   }
 
   let { model, sources, suggestPreset, sortOrder, onclose, onsaved }: Props = $props();
-
-  // 先关掉对话框再让父组件卸载：dialog.close() 才会把焦点还给打开它的按钮
-  let open = $state(true);
-  function leave(then: () => void) {
-    flushSync(() => (open = false));
-    then();
-  }
-  const close = () => leave(onclose);
 
   interface Draft {
     name: string;
@@ -269,9 +261,7 @@
           ...(d.efforts_auto ? {} : { effort_levels: d.effort_levels }),
           create_preset: d.create_preset,
         });
-        leave(() =>
-          onsaved(saved, d.create_preset ? `已添加，并建好了方案「${saved.name}」` : '已添加，可以点“测试”确认一下'),
-        );
+        onsaved(saved, d.create_preset ? `已添加，并建好了方案「${saved.name}」` : '已添加，可以点“测试”确认一下');
       } else {
         const saved = await meetingApi.admin.patchLlmModel(model.id, {
           ...common,
@@ -280,7 +270,7 @@
           copy_from_model_id: d.copy_from,
           effort_levels: d.effort_levels,
         });
-        leave(() => onsaved(saved, '已保存'));
+        onsaved(saved, '已保存');
       }
     } catch (e) {
       error = message(e);
@@ -293,7 +283,7 @@
   }
 </script>
 
-<Modal {open} title={model ? `编辑「${model.name}」` : '添加会议模型'} size="lg" onclose={close}>
+<Modal open title={model ? `编辑「${model.name}」` : '添加会议模型'} size="lg" {onclose}>
   <form id="meeting-llm-form" class="space-y-4" onsubmit={save}>
     <div class="grid gap-4 sm:grid-cols-2">
       <div>
@@ -469,7 +459,7 @@
     {/if}
   </form>
   {#snippet footer()}
-    <button class="btn btn-secondary" onclick={close}>取消</button>
+    <button class="btn btn-secondary" onclick={onclose}>取消</button>
     <button class="btn btn-primary" form="meeting-llm-form" disabled={saving}>
       {#if saving}<LoaderCircle class="size-4 animate-spin" />{/if}保存
     </button>

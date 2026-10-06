@@ -71,7 +71,7 @@
 </script>
 
 <script lang="ts">
-  import { flushSync, tick } from 'svelte';
+  import { tick } from 'svelte';
   import Modal from '../../components/Modal.svelte';
   import Switch from '../../components/Switch.svelte';
   import { confirm } from '../../lib/confirm.svelte';
@@ -92,14 +92,6 @@
   }
 
   let { preset, models, suggestDefault, sortOrder, onclose, onsaved }: Props = $props();
-
-  // 先关掉对话框再让父组件卸载：dialog.close() 才会把焦点还给打开它的按钮
-  let open = $state(true);
-  function leave(then: () => void) {
-    flushSync(() => (open = false));
-    then();
-  }
-  const close = () => leave(onclose);
 
   const STEP_TITLES: Record<LlmStep, string> = { ...STEP_LABELS, minutes: '生成纪要（含分段提要）' };
   const STEP_HINTS: Record<LlmStep, string> = {
@@ -269,10 +261,10 @@
     try {
       if (preset) {
         await meetingApi.admin.patchPreset(preset.id, body);
-        leave(() => onsaved('已保存'));
+        onsaved('已保存');
       } else {
         await meetingApi.admin.createPreset(body);
-        leave(() => onsaved('方案已添加，可以在编辑里逐个用途测试'));
+        onsaved('方案已添加，可以在编辑里逐个用途测试');
       }
     } catch (e) {
       await showError(e instanceof Error ? e.message : String(e));
@@ -313,11 +305,11 @@
 </script>
 
 <Modal
-  {open}
+  open
   title={preset ? `编辑方案「${preset.name}」` : '添加整理方案'}
   description="四个用途分别选模型和参数；成员上传会议时选方案。"
   size="lg"
-  onclose={close}
+  {onclose}
 >
   <form id="meeting-preset-form" class="space-y-4" onsubmit={save}>
     <div class="grid gap-4 sm:grid-cols-2">
@@ -597,7 +589,7 @@
     {/if}
   </form>
   {#snippet footer()}
-    <button class="btn btn-secondary" onclick={close}>取消</button>
+    <button class="btn btn-secondary" onclick={onclose}>取消</button>
     <button class="btn btn-primary" form="meeting-preset-form" disabled={saving}>
       {#if saving}<LoaderCircle class="size-4 animate-spin" />{/if}保存
     </button>
