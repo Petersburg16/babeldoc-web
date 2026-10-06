@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from app.models import AsrProvider
+from app.models import AsrProvider, Setting
 from tests.conftest import add_mock_provider
 
 
@@ -87,3 +87,16 @@ def test_public_base_url_setting(admin_client):
     assert bad.status_code == 422
     ok = admin_client.put("/api/admin/settings", json={**settings, "public_base_url": "https://example.com/"})
     assert ok.status_code == 200 and ok.json()["public_base_url"] == "https://example.com"
+
+
+def test_default_meeting_template_setting(app, admin_client):
+    settings = admin_client.get("/api/admin/settings").json()
+    bad = admin_client.put("/api/admin/settings", json={**settings, "default_meeting_template": "bogus"})
+    assert bad.status_code == 422
+    ok = admin_client.put("/api/admin/settings", json={**settings, "default_meeting_template": "project"})
+    assert ok.status_code == 200 and ok.json()["default_meeting_template"] == "project"
+    # 加校验之前存进库的未知模板：读出时退回默认模板，不影响其他设置
+    with app.state.ctx.Session() as db:
+        db.get(Setting, "default_meeting_template").value = "bogus"
+        db.commit()
+    assert admin_client.get("/api/admin/settings").json()["default_meeting_template"] == "group_topic"

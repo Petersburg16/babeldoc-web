@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Annotated
+
+from pydantic import AfterValidator, Field
 
 
 @dataclass(frozen=True)
@@ -103,6 +106,17 @@ TEMPLATES: tuple[MinutesTemplate, ...] = (
 )
 
 TEMPLATE_IDS = tuple(t.id for t in TEMPLATES)
+DEFAULT_TEMPLATE = TEMPLATES[0].id
+
+
+def check_template_id(v: str) -> str:
+    if v not in TEMPLATE_IDS:
+        raise ValueError("未知的纪要模板")
+    return v
+
+
+# 请求体和系统设置里的纪要模板：只能选内置模板
+TemplateId = Annotated[str, Field(max_length=32), AfterValidator(check_template_id)]
 
 
 def get_template(template_id: str | None) -> MinutesTemplate:

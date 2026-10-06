@@ -10,7 +10,7 @@ from ..schemas import ApiKey, BaseUrl, Description, ModelName, Name, Qps
 from ..security import SecretBox, mask_secret
 from .asr import adapter_class, load_secrets
 from .llm_config import EFFORT_ORDER, PresetSteps, Step, builtin_efforts, normalize_effort, normalize_levels
-from .templates import TEMPLATE_IDS
+from .templates import TemplateId, check_template_id
 
 
 class PartOut(BaseModel):
@@ -173,9 +173,7 @@ class MeetingCreate(BaseModel):
     @field_validator("template")
     @classmethod
     def _template(cls, v: str) -> str:
-        if v and v not in TEMPLATE_IDS:
-            raise ValueError("未知的纪要模板")
-        return v
+        return check_template_id(v) if v else v  # 留空用系统设置里的默认模板
 
     @field_validator("language")
     @classmethod
@@ -193,16 +191,9 @@ class MeetingUploadOut(BaseModel):
 
 class MeetingPatch(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
-    template: str | None = Field(default=None, max_length=32)
+    template: TemplateId | None = None
     extra_instructions: str | None = Field(default=None, max_length=2000)
     llm_preset_id: int | None = None
-
-    @field_validator("template")
-    @classmethod
-    def _template(cls, v: str | None) -> str | None:
-        if v is not None and v not in TEMPLATE_IDS:
-            raise ValueError("未知的纪要模板")
-        return v
 
 
 class ProviderPublicOut(BaseModel):

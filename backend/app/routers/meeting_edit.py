@@ -10,7 +10,7 @@ import re
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
@@ -19,7 +19,7 @@ from ..meeting.llm_config import resolve_meeting_llm
 from ..meeting.processing import OP_LABELS, OPS
 from ..meeting.schemas import MeetingDetailOut, MeetingOut, SegmentOut
 from ..meeting.speakers import lock_meeting, speaker_number
-from ..meeting.templates import TEMPLATE_IDS
+from ..meeting.templates import TemplateId
 from ..models import Meeting, MeetingSegment, User
 from .meetings import detail_out, own_meeting, usable_preset
 
@@ -52,17 +52,10 @@ class AcceptGuessesIn(BaseModel):
 
 
 class OpIn(BaseModel):
-    template: str | None = Field(default=None, max_length=32)
+    template: TemplateId | None = None
     extra_instructions: str | None = Field(default=None, max_length=2000)
     # 换整理方案：之后的整理、纪要、对话都按新方案
     llm_preset_id: int | None = None
-
-    @field_validator("template")
-    @classmethod
-    def _template(cls, v: str | None) -> str | None:
-        if v is not None and v not in TEMPLATE_IDS:
-            raise ValueError("未知的纪要模板")
-        return v
 
 
 def _locked(db: Session, user: User, meeting_id: str) -> Meeting:

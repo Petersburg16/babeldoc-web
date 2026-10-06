@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .languages import LANGUAGE_CODES
+from .meeting.templates import DEFAULT_TEMPLATE, TemplateId
 from .models import Setting
 
 
@@ -29,7 +30,7 @@ class SystemSettings(BaseModel):
     max_audio_upload_mb: int = Field(default=1024, ge=10, le=4096)
     max_audio_hours: int = Field(default=5, ge=1, le=6)
     meeting_context_chars: int = Field(default=120000, ge=10000, le=1000000)
-    default_meeting_template: str = Field(default="group_topic", max_length=32)
+    default_meeting_template: TemplateId = DEFAULT_TEMPLATE
 
     @field_validator("public_base_url")
     @classmethod

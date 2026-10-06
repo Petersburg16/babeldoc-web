@@ -7,6 +7,7 @@ from sqlalchemy import JSON, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base, utcnow
+from .meeting.templates import DEFAULT_TEMPLATE
 
 JOB_ACTIVE = ("queued", "running")
 JOB_BILLABLE = ("queued", "running", "succeeded")
@@ -213,7 +214,7 @@ class Meeting(Base):
     model_name: Mapped[str] = mapped_column(String(64), default="")
     # 整理方案（meeting_llm_presets.id）；不加外键，方案被删时按默认方案处理
     llm_preset_id: Mapped[int | None] = mapped_column(default=None)
-    template: Mapped[str] = mapped_column(String(32), default="group_topic")
+    template: Mapped[str] = mapped_column(String(32), default=DEFAULT_TEMPLATE)
     extra_instructions: Mapped[str] = mapped_column(Text, default="")
     expected_speakers: Mapped[int | None] = mapped_column(default=None)
     # 识别分段：[{index, offset_ms, duration_ms, file, token, token_exp, state, task_id, error, raw, ...}]
