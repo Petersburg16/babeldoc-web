@@ -46,8 +46,10 @@ class JobsStore extends PagedList<Job> {
       const before = this.items[index];
       this.items[index] = job;
       if (before.status !== job.status && (job.status === 'succeeded' || job.status === 'failed')) this.onFinish?.(job);
-    } else if (this.filter === 'all' || this.filter === 'active') {
-      this.insertIfNewer(job);
+    } else {
+      if (this.filter === 'all' || this.filter === 'active') this.insertIfNewer(job);
+      // 列表里没有、但这次收到过进度的任务（例如重试后面几页的旧任务后列表回到了第一页）：完成时照样提示、刷新额度
+      if (this.live[job.id] && (job.status === 'succeeded' || job.status === 'failed')) this.onFinish?.(job);
     }
     if (job.status !== 'running') {
       const { [job.id]: _, ...rest } = this.live;
