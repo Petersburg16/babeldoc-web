@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..defaults import ensure_single_default
 from ..deps import AdminDep, AppContext, CtxDep, DbDep, require_admin
-from ..meeting.asr import adapter_class, available_kinds
+from ..meeting.asr import adapter_class, available_kinds, load_secrets
 from ..meeting.asr.base import AsrAdapter
 from ..meeting.schemas import (
     FieldSpecOut,
@@ -22,7 +22,6 @@ from ..meeting.schemas import (
     ProviderIn,
     ProviderKindOut,
     ProviderPatch,
-    load_secrets,
 )
 from ..models import AsrProvider, GlossaryTerm, Meeting
 

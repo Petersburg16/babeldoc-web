@@ -9,8 +9,7 @@ from ..languages import LANGUAGES
 from ..models import ModelProfile, User
 from ..schemas import MetaOut, ModelPublicOut
 from ..settings_store import load_settings
-
-MAX_FILES_PER_UPLOAD = 10
+from ..uploads import MAX_FILES_PER_UPLOAD
 
 router = APIRouter(prefix="/api", tags=["meta"])
 

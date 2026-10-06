@@ -34,10 +34,10 @@ from ..security import SecretBox
 from ..settings_store import load_settings
 from . import processing, split
 from .align import Alignment, MergedSegment, align_parts
-from .asr import adapter_class
+from .asr import adapter_class, load_secrets
 from .asr.base import AsrAdapter, AsrError, SubmitOptions
 from .media import AUDIO_NAME, FfmpegProcess, MediaError, probe, tone, transcode_args
-from .schemas import MeetingOut, load_secrets
+from .schemas import MeetingOut
 
 log = logging.getLogger("bdw.meetings")
 
@@ -523,12 +523,12 @@ class MeetingManager:
             self.publish(meeting_id)
         else:
             # 重启后续查：服务商可能还要来拉音频，令牌过期就顺延（地址已经交给服务商了，不能换）
-            exp = _parse_iso(part.get("token_exp"))
+            exp = parse_iso(part.get("token_exp"))
             if part.get("token") and (exp is None or exp < utcnow() + timedelta(hours=1)):
                 self._update_part(meeting_id, index, token_exp=_iso(utcnow() + TOKEN_TTL))
             if part.get("state") != "submitted":
                 self._update_part(meeting_id, index, state="submitted")
-        submitted = _parse_iso(self._part(meeting_id, index).get("submitted_at")) or utcnow()
+        submitted = parse_iso(self._part(meeting_id, index).get("submitted_at")) or utcnow()
         ttl = timedelta(hours=adapter.task_ttl_hours) if adapter.task_ttl_hours else POLL_TIMEOUT
         if utcnow() - submitted > min(ttl, POLL_TIMEOUT):
             # 先判断再查询：过期的任务号在有的服务商那里会被复用，查到的可能是别人的结果
@@ -985,7 +985,7 @@ def _iso(dt: datetime) -> str:
     return dt.isoformat()
 
 
-def _parse_iso(value: Any) -> datetime | None:
+def parse_iso(value: Any) -> datetime | None:
     if not value:
         return None
     try:

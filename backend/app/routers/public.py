@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 
 from ..db import utcnow
 from ..deps import CtxDep, client_ip
-from ..meeting.manager import PROBE_ID, _parse_iso
+from ..meeting.manager import PROBE_ID, parse_iso
 from ..models import Meeting
 
 router = APIRouter(tags=["public"])
@@ -48,7 +48,7 @@ def meeting_audio(meeting_id: str, index: int, token: str, request: Request, ctx
         part = next((p for p in m.asr_parts or [] if int(p.get("index", -1)) == index), None)
     if part is None or not part.get("token") or not secrets.compare_digest(str(part["token"]), token):
         raise HTTPException(404, "Not Found")
-    expires = _parse_iso(part.get("token_exp"))
+    expires = parse_iso(part.get("token_exp"))
     if expires is None or expires < utcnow():
         raise HTTPException(404, "Not Found")
     path = ctx.meetings.meeting_dir(meeting_id) / str(part.get("file") or "")

@@ -39,7 +39,7 @@ from ..meeting.templates import TEMPLATES
 from ..models import MEETING_ACTIVE, AsrProvider, Meeting, MeetingLlmPreset, MeetingMessage, MeetingSegment, User
 from ..security import new_job_id
 from ..settings_store import load_settings
-from .jobs import clean_filename
+from ..uploads import clean_filename
 
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
 

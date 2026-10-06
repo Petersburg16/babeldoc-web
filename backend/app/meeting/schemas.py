@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -9,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from ..models import AsrProvider, GlossaryTerm, Meeting, MeetingLlmModel, MeetingMessage, MeetingSegment
 from ..schemas import BaseUrl
 from ..security import SecretBox, mask_secret
-from .asr import adapter_class
+from .asr import adapter_class, load_secrets
 from .llm_config import EFFORT_ORDER, PresetSteps, Step, builtin_efforts, normalize_effort, normalize_levels
 from .templates import TEMPLATE_IDS
 
@@ -299,17 +298,6 @@ class ProviderAdminOut(BaseModel):
             sort_order=p.sort_order,
             updated_at=p.updated_at,
         )
-
-
-def load_secrets(p: AsrProvider, box: SecretBox) -> dict[str, str]:
-    raw = box.decrypt(p.secret_enc)
-    if not raw:
-        return {}
-    try:
-        data = json.loads(raw)
-    except ValueError:
-        return {}
-    return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
 
 
 class ProviderIn(BaseModel):

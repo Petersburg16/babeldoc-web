@@ -19,7 +19,7 @@ from .db import init_db, make_engine, make_sessionmaker
 from .engine import build_spec, child_env, engine_command, spawn
 from .job_ops import default_model
 from .models import Job, ModelProfile, User
-from .schemas import _normalize_username
+from .schemas import normalize_username
 from .security import SecretBox, hash_password
 
 
@@ -40,7 +40,7 @@ def _read_password(given: str | None) -> str:
 
 
 def create_admin(args: argparse.Namespace) -> None:
-    username = _normalize_username(args.username)
+    username = normalize_username(args.username)
     password = _read_password(args.password)
     if len(password) < 8:
         sys.exit("密码至少 8 位")

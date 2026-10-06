@@ -13,7 +13,7 @@ USERNAME_PATTERN = re.compile(r"^[a-z0-9_.-]{3,32}$")
 FILE_ORDER = ("dual", "mono", "glossary")
 
 
-def _normalize_username(v: str) -> str:
+def normalize_username(v: str) -> str:
     v = v.strip().lower()
     if not USERNAME_PATTERN.match(v):
         raise ValueError("用户名只能包含小写字母、数字、下划线、点和短横线，长度 3-32")
@@ -27,7 +27,7 @@ def _check_base_url(v: str) -> str:
     return v
 
 
-Username = Annotated[str, Field(min_length=3, max_length=40), AfterValidator(_normalize_username)]
+Username = Annotated[str, Field(min_length=3, max_length=40), AfterValidator(normalize_username)]
 BaseUrl = Annotated[str, Field(max_length=255), AfterValidator(_check_base_url)]
 
 
