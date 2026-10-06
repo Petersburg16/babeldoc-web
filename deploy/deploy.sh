@@ -8,14 +8,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+# shellcheck source=deploy/lib-local.sh
+. deploy/lib-local.sh
 
-HOST="${1:-${BDW_DEPLOY_HOST:-}}"
-if [ -z "$HOST" ] && [ -f deploy/deploy.local ]; then
-  # shellcheck disable=SC1091
-  . deploy/deploy.local
-  HOST="${BDW_DEPLOY_HOST:-}"
-fi
-[ -n "$HOST" ] || { echo "用法：bash deploy/deploy.sh <ssh 主机别名>（或在 deploy/deploy.local 里写 BDW_DEPLOY_HOST=别名）" >&2; exit 2; }
+resolve_host "${1:-}" || { echo "用法：bash deploy/deploy.sh <ssh 主机别名>（或在 deploy/deploy.local 里写 BDW_DEPLOY_HOST=别名）" >&2; exit 2; }
 
 rev="$(git rev-parse --short HEAD 2>/dev/null || echo init)"
 [ -z "$(git status --porcelain)" ] || rev="$rev-dirty"
@@ -33,7 +29,7 @@ git ls-files --cached --others --exclude-standard >"$LIST"
 find frontend/dist -type f >>"$LIST"
 
 echo "==> 上传 $RELEASE → $HOST（$(wc -l <"$LIST" | tr -d ' ') 个文件）"
-tar -czf - -T "$LIST" | ssh "$HOST" "set -e; d=/opt/babeldoc-web/releases/$RELEASE; mkdir -p \$d; tar -xzf - -C \$d --no-same-owner"
+tar -czf - -T "$LIST" | ssh "$HOST" "set -e; d=$REMOTE_APP/releases/$RELEASE; mkdir -p \$d; tar -xzf - -C \$d --no-same-owner"
 
 echo "==> 服务器安装"
-ssh "$HOST" "bash /opt/babeldoc-web/releases/$RELEASE/deploy/remote.sh install $RELEASE"
+ssh "$HOST" "bash $REMOTE_APP/releases/$RELEASE/deploy/remote.sh install $RELEASE"

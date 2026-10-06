@@ -6,24 +6,21 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+# shellcheck source=deploy/lib-local.sh
+. deploy/lib-local.sh
 
 fresh=""
 if [ "${1:-}" = "--new" ]; then
   fresh=1
   shift
 fi
-HOST="${1:-${BDW_DEPLOY_HOST:-}}"
-if [ -z "$HOST" ] && [ -f deploy/deploy.local ]; then
-  # shellcheck disable=SC1091
-  . deploy/deploy.local
-  HOST="${BDW_DEPLOY_HOST:-}"
-fi
-[ -n "$HOST" ] || { echo "用法：bash deploy/pull-backup.sh [--new] <ssh 主机别名>" >&2; exit 2; }
+resolve_host "${1:-}" || { echo "用法：bash deploy/pull-backup.sh [--new] <ssh 主机别名>" >&2; exit 2; }
 
+REMOTE_SH="$REMOTE_APP/current/deploy/remote.sh"
 if [ -n "$fresh" ]; then
-  ssh "$HOST" bash /opt/babeldoc-web/current/deploy/remote.sh backup
+  ssh "$HOST" bash "$REMOTE_SH" backup
 fi
-latest="$(ssh "$HOST" 'ls -1t /var/backups/babeldoc-web/babeldoc-web-*.tar.gz 2>/dev/null | head -1')"
+latest="$(ssh "$HOST" bash "$REMOTE_SH" latest-backup)"
 [ -n "$latest" ] || { echo "服务器上还没有备份，可加 --new 先备份一次" >&2; exit 1; }
 
 mkdir -p backups
