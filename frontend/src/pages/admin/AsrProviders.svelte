@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import ApiKeyField from '../../components/admin/ApiKeyField.svelte';
   import EmptyState from '../../components/admin/EmptyState.svelte';
   import EntityCard from '../../components/admin/EntityCard.svelte';
   import ResultNote from '../../components/admin/ResultNote.svelte';
@@ -557,32 +558,14 @@
               {#each f.options as [value, text] (value)}<option {value}>{text}</option>{/each}
             </select>
           {:else if f.secret}
-            <div class="flex gap-2">
-              <input
-                id="a-f-{f.key}"
-                class="field font-mono"
-                type="password"
-                autocomplete="off"
-                spellcheck="false"
-                required={f.required && !saved}
-                disabled={draft.clear[f.key]}
-                placeholder={draft.clear[f.key] ? '保存后清空' : saved ? `已保存 ${saved}，留空保持不变` : f.placeholder}
-                bind:value={draft.secrets[f.key]}
-              />
-              {#if saved}
-                <button
-                  type="button"
-                  class="btn btn-secondary shrink-0"
-                  onclick={() => {
-                    if (!draft) return;
-                    draft.clear[f.key] = !draft.clear[f.key];
-                    if (draft.clear[f.key]) draft.secrets[f.key] = '';
-                  }}
-                >
-                  {draft.clear[f.key] ? '撤销' : '清空'}
-                </button>
-              {/if}
-            </div>
+            <ApiKeyField
+              id="a-f-{f.key}"
+              bind:value={draft.secrets[f.key]}
+              bind:clear={draft.clear[f.key]}
+              saved={saved ?? ''}
+              placeholder={f.placeholder}
+              required={f.required && !saved}
+            />
           {:else}
             <input
               id="a-f-{f.key}"

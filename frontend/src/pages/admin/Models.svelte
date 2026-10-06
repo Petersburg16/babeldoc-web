@@ -3,41 +3,18 @@
   import EmptyState from '../../components/admin/EmptyState.svelte';
   import EntityCard from '../../components/admin/EntityCard.svelte';
   import ResultNote from '../../components/admin/ResultNote.svelte';
-  import Modal from '../../components/Modal.svelte';
-  import Switch from '../../components/Switch.svelte';
   import { api } from '../../lib/api';
   import { confirm } from '../../lib/confirm.svelte';
   import { errorText } from '../../lib/format';
-  import { Bot, ChevronDown, LoaderCircle, Pencil, Plus, RefreshCw, Star, Trash2, Info } from '../../lib/icons';
+  import { Bot, LoaderCircle, Pencil, Plus, RefreshCw, Star, Trash2, Info } from '../../lib/icons';
   import { toast } from '../../lib/toast.svelte';
   import type { ModelAdmin, ModelTest } from '../../lib/types';
-
-  interface Draft {
-    id: number | null;
-    name: string;
-    description: string;
-    base_url: string;
-    api_key: string;
-    clear_api_key: boolean;
-    api_key_masked: string;
-    model: string;
-    term_model: string;
-    qps: number;
-    pool_max_workers: string;
-    send_temperature: boolean;
-    json_mode: boolean;
-    enabled: boolean;
-    is_default: boolean;
-    sort_order: number;
-  }
+  import TranslationModelModal from './TranslationModelModal.svelte';
 
   let models = $state<ModelAdmin[]>([]);
   let loading = $state(true);
-  let draft = $state<Draft | null>(null);
-  let saving = $state(false);
-  let advanced = $state(false);
-  let remoteModels = $state<string[]>([]);
-  let probing = $state(false);
+  /** 'new' 表示新建 */
+  let editing = $state<ModelAdmin | 'new' | null>(null);
   let tests = $state<Record<number, ModelTest | 'running'>>({});
 
   async function load() {
@@ -52,110 +29,10 @@
 
   onMount(load);
 
-  function openCreate() {
-    advanced = false;
-    remoteModels = [];
-    draft = {
-      id: null,
-      name: '',
-      description: '',
-      base_url: '',
-      api_key: '',
-      clear_api_key: false,
-      api_key_masked: '',
-      model: '',
-      term_model: '',
-      qps: 4,
-      pool_max_workers: '',
-      send_temperature: true,
-      json_mode: false,
-      enabled: true,
-      is_default: models.length === 0,
-      sort_order: models.length,
-    };
-  }
-
-  function openEdit(m: ModelAdmin) {
-    advanced = false;
-    remoteModels = [];
-    draft = {
-      id: m.id,
-      name: m.name,
-      description: m.description,
-      base_url: m.base_url,
-      api_key: '',
-      clear_api_key: false,
-      api_key_masked: m.api_key_masked,
-      model: m.model,
-      term_model: m.term_model ?? '',
-      qps: m.qps,
-      pool_max_workers: m.pool_max_workers ? String(m.pool_max_workers) : '',
-      send_temperature: m.send_temperature,
-      json_mode: m.json_mode,
-      enabled: m.enabled,
-      is_default: m.is_default,
-      sort_order: m.sort_order,
-    };
-  }
-
-  function payload(d: Draft) {
-    return {
-      name: d.name.trim(),
-      description: d.description.trim(),
-      base_url: d.base_url.trim(),
-      model: d.model.trim(),
-      term_model: d.term_model.trim() || null,
-      qps: Number(d.qps) || 4,
-      pool_max_workers: d.pool_max_workers.trim() ? Number(d.pool_max_workers) : null,
-      send_temperature: d.send_temperature,
-      json_mode: d.json_mode,
-      enabled: d.enabled,
-      is_default: d.is_default,
-      sort_order: Number(d.sort_order) || 0,
-    };
-  }
-
-  async function save(event: SubmitEvent) {
-    event.preventDefault();
-    if (!draft) return;
-    saving = true;
-    try {
-      if (draft.id === null) {
-        await api.admin.createModel({ ...payload(draft), api_key: draft.api_key.trim() });
-        toast.success('模型已添加，可以点“测试连接”确认一下');
-      } else {
-        await api.admin.patchModel(draft.id, {
-          ...payload(draft),
-          ...(draft.api_key.trim() ? { api_key: draft.api_key.trim() } : {}),
-          clear_api_key: draft.clear_api_key,
-        });
-        toast.success('已保存');
-      }
-      draft = null;
-      await load();
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      saving = false;
-    }
-  }
-
-  async function probe() {
-    if (!draft) return;
-    probing = true;
-    try {
-      const { models: list } = await api.admin.probeModels({
-        base_url: draft.base_url.trim(),
-        api_key: draft.api_key.trim(),
-        model_id: draft.id,
-      });
-      remoteModels = list;
-      toast.success(list.length ? `获取到 ${list.length} 个模型，可在“模型名”中选择` : '接口没有返回模型列表');
-    } catch (e) {
-      toast.error(e);
-    } finally {
-      probing = false;
-    }
+  async function saved(message: string) {
+    editing = null;
+    toast.success(message);
+    await load();
   }
 
   function testText(r: ModelTest) {
@@ -205,7 +82,7 @@
     <p class="flex items-center gap-1.5 text-[13px] text-muted">
       <Info class="size-4" />支持任何 OpenAI 兼容接口（含中转站）。API Key 加密保存在服务器，不会发送到浏览器。
     </p>
-    <button class="btn btn-primary btn-sm ml-auto" onclick={openCreate}><Plus class="size-4" />添加模型</button>
+    <button class="btn btn-primary btn-sm ml-auto" onclick={() => (editing = 'new')}><Plus class="size-4" />添加模型</button>
   </div>
 
   {#if models.length}
@@ -233,7 +110,7 @@
               {#if result === 'running'}<LoaderCircle class="size-3.5 animate-spin" />{:else}<RefreshCw class="size-3.5" />{/if}
               测试连接
             </button>
-            <button class="btn btn-ghost btn-sm" onclick={() => openEdit(m)}><Pencil class="size-3.5" />编辑</button>
+            <button class="btn btn-ghost btn-sm" onclick={() => (editing = m)}><Pencil class="size-3.5" />编辑</button>
             {#if !m.is_default && m.enabled}
               <button class="btn btn-ghost btn-sm" onclick={() => quickPatch(m, { is_default: true })}><Star class="size-3.5" />设为默认</button>
             {/if}
@@ -250,98 +127,17 @@
       icon={Bot}
       title="还没有配置翻译模型"
       text="添加一个 OpenAI 兼容的接口（比如中转站的地址和 Key），用户就能开始翻译了。"
-      action={{ label: '添加模型', onclick: openCreate }}
+      action={{ label: '添加模型', onclick: () => (editing = 'new') }}
     />
   {/if}
 </div>
 
-<Modal open={!!draft} title={draft?.id === null ? '添加模型' : `编辑「${draft?.name}」`} size="lg" onclose={() => (draft = null)}>
-  {#if draft}
-    <form id="model-form" class="space-y-4" onsubmit={save}>
-      <div class="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label class="label" for="m-name">显示名称</label>
-          <input id="m-name" class="field" required maxlength={64} placeholder="例如：DeepSeek V3" bind:value={draft.name} />
-        </div>
-        <div>
-          <label class="label" for="m-desc">说明 <span class="font-normal text-muted">（用户可见）</span></label>
-          <input id="m-desc" class="field" maxlength={255} placeholder="例如：速度快，适合日常论文" bind:value={draft.description} />
-        </div>
-      </div>
-      <div>
-        <label class="label" for="m-url">接口地址（Base URL）</label>
-        <input id="m-url" class="field font-mono" placeholder="https://api.example.com/v1" bind:value={draft.base_url} />
-        <p class="hint">一般以 /v1 结尾；留空则使用 OpenAI 官方地址。</p>
-      </div>
-      <div>
-        <label class="label" for="m-key">API Key</label>
-        <input
-          id="m-key"
-          class="field font-mono"
-          type="password"
-          autocomplete="off"
-          placeholder={draft.id !== null && draft.api_key_masked ? `已保存 ${draft.api_key_masked}，留空保持不变` : 'sk-...'}
-          bind:value={draft.api_key}
-        />
-      </div>
-      <div>
-        <label class="label" for="m-model">模型名</label>
-        <div class="flex gap-2">
-          <input id="m-model" class="field font-mono" required list="remote-models" placeholder="例如：deepseek-chat" bind:value={draft.model} />
-          <button type="button" class="btn btn-secondary shrink-0" disabled={probing} onclick={probe}>
-            {#if probing}<LoaderCircle class="size-4 animate-spin" />{/if}获取模型列表
-          </button>
-        </div>
-        <datalist id="remote-models">
-          {#each remoteModels as name (name)}<option value={name}></option>{/each}
-        </datalist>
-      </div>
-      <div class="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label class="label" for="m-qps">每秒请求数（QPS）</label>
-          <input id="m-qps" class="field" type="number" min="1" max="100" bind:value={draft.qps} />
-          <p class="hint">按中转站的限速设置，太高会被限流</p>
-        </div>
-        <div class="divide-y divide-line">
-          <Switch bind:checked={draft.enabled} label="启用" />
-          <Switch bind:checked={draft.is_default} label="设为默认模型" />
-        </div>
-      </div>
-
-      <button type="button" class="flex items-center gap-1.5 text-[13px] font-medium text-ink-2 hover:text-ink" onclick={() => (advanced = !advanced)}>
-        <ChevronDown class="size-4 transition-transform {advanced ? 'rotate-180' : ''}" />高级参数
-      </button>
-      {#if advanced}
-        <div class="animate-pop space-y-4 rounded-xl border border-line p-4">
-          <div class="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label class="label" for="m-term">术语提取模型 <span class="font-normal text-muted">（可选）</span></label>
-              <input id="m-term" class="field font-mono" list="remote-models" placeholder="默认与翻译模型相同" bind:value={draft.term_model} />
-            </div>
-            <div>
-              <label class="label" for="m-workers">工作线程数 <span class="font-normal text-muted">（可选）</span></label>
-              <input id="m-workers" class="field" inputmode="numeric" placeholder="默认等于 QPS" bind:value={draft.pool_max_workers} />
-            </div>
-            <div>
-              <label class="label" for="m-order">排序</label>
-              <input id="m-order" class="field" type="number" bind:value={draft.sort_order} />
-            </div>
-          </div>
-          <div class="divide-y divide-line">
-            <Switch bind:checked={draft.send_temperature} label="发送 temperature=0" description="个别模型（如部分推理模型）不接受 temperature 参数时关闭" />
-            <Switch bind:checked={draft.json_mode} label="允许 JSON 模式" description="接口支持 response_format=json_object 时可开启" />
-            {#if draft.id !== null && draft.api_key_masked}
-              <Switch bind:checked={draft.clear_api_key} label="清除已保存的 API Key" />
-            {/if}
-          </div>
-        </div>
-      {/if}
-    </form>
-  {/if}
-  {#snippet footer()}
-    <button class="btn btn-secondary" onclick={() => (draft = null)}>取消</button>
-    <button class="btn btn-primary" form="model-form" disabled={saving}>
-      {#if saving}<LoaderCircle class="size-4 animate-spin" />{/if}保存
-    </button>
-  {/snippet}
-</Modal>
+{#if editing}
+  <TranslationModelModal
+    model={editing === 'new' ? null : editing}
+    suggestDefault={!models.length}
+    sortOrder={models.length}
+    onclose={() => (editing = null)}
+    onsaved={saved}
+  />
+{/if}

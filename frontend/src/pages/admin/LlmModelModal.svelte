@@ -1,5 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import ApiKeyField from '../../components/admin/ApiKeyField.svelte';
+  import ModelNameField from '../../components/admin/ModelNameField.svelte';
   import Modal from '../../components/Modal.svelte';
   import Switch from '../../components/Switch.svelte';
   import { errorText } from '../../lib/format';
@@ -92,22 +94,12 @@
   let saving = $state(false);
   let error = $state('');
   let errorBox = $state<HTMLElement>();
-  let remoteModels = $state<string[]>([]);
-  let probing = $state(false);
-  let probeNote = $state<Note | null>(null);
   let detecting = $state(false);
   let effortNote = $state<Note | null>(null);
 
   const source = $derived(sources.find((s) => s.id === draft.copy_from));
   // 内置表是按已保存的模型名算的；改了模型名就对不上了
   const builtinStale = $derived(model !== null && draft.model.trim() !== model.model);
-
-  const keyPlaceholder = $derived.by(() => {
-    if (draft.clear_api_key) return '保存后清空';
-    if (source) return `留空则复制「${source.name}」的 Key`;
-    if (model?.api_key_set) return `已保存 ${model.api_key_masked}，留空保持不变`;
-    return 'sk-...';
-  });
 
   function chooseSource(id: number | null) {
     draft.copy_from = id;
@@ -134,19 +126,7 @@
   }
 
   async function probe() {
-    probing = true;
-    probeNote = null;
-    try {
-      const { models: list } = await meetingApi.admin.probeLlmModels(credentials());
-      remoteModels = list;
-      probeNote = list.length
-        ? { tone: 'good', text: `拉取到 ${list.length} 个模型，可在“模型名”里选择` }
-        : { tone: 'info', text: '接口没有返回模型列表，请手动填写' };
-    } catch (e) {
-      probeNote = { tone: 'bad', text: errorText(e) };
-    } finally {
-      probing = false;
-    }
+    return (await meetingApi.admin.probeLlmModels(credentials())).models;
   }
 
   function toggleEffort(level: EffortLevel) {
@@ -223,7 +203,8 @@
       } else {
         const saved = await meetingApi.admin.patchLlmModel(model.id, {
           ...common,
-          ...(key ? { api_key: key } : {}),
+          // 点了“清空”就不发新 Key（输入框已禁用并清空，这里再保险一次）
+          ...(key && !d.clear_api_key ? { api_key: key } : {}),
           clear_api_key: d.clear_api_key,
           copy_from_model_id: d.copy_from,
           effort_levels: d.effort_levels,
@@ -279,54 +260,25 @@
     </div>
     <div>
       <label class="label" for="ml-key">API Key</label>
-      <div class="flex gap-2">
-        <input
-          id="ml-key"
-          class="field font-mono"
-          type="password"
-          autocomplete="off"
-          spellcheck="false"
-          disabled={draft.clear_api_key}
-          placeholder={keyPlaceholder}
-          bind:value={draft.api_key}
-        />
-        {#if model?.api_key_set && !source}
-          <button
-            type="button"
-            class="btn btn-secondary shrink-0"
-            onclick={() => {
-              draft.clear_api_key = !draft.clear_api_key;
-              if (draft.clear_api_key) draft.api_key = '';
-            }}
-          >
-            {draft.clear_api_key ? '撤销' : '清空'}
-          </button>
-        {/if}
-      </div>
+      <ApiKeyField
+        id="ml-key"
+        bind:value={draft.api_key}
+        bind:clear={draft.clear_api_key}
+        saved={!source && model?.api_key_set ? model.api_key_masked : ''}
+        placeholder={source ? `留空则复制「${source.name}」的 Key` : 'sk-...'}
+      />
       <p class="hint">加密保存在服务器，不会发送到浏览器。</p>
     </div>
     <div>
       <label class="label" for="ml-model">模型名</label>
-      <div class="flex gap-2">
-        <input
-          id="ml-model"
-          class="field font-mono"
-          required
-          maxlength={128}
-          autocomplete="off"
-          spellcheck="false"
-          list="meeting-llm-remote-models"
-          placeholder="例如：gpt-6-astra"
-          bind:value={draft.model}
-        />
-        <button type="button" class="btn btn-secondary shrink-0" disabled={probing} onclick={probe}>
-          {#if probing}<LoaderCircle class="size-4 animate-spin" />{/if}拉取列表
-        </button>
-      </div>
-      <datalist id="meeting-llm-remote-models">
-        {#each remoteModels as name (name)}<option value={name}></option>{/each}
-      </datalist>
-      {#if probeNote}<p class="hint {NOTE_TONES[probeNote.tone]}">{probeNote.text}</p>{/if}
+      <ModelNameField
+        id="ml-model"
+        bind:value={draft.model}
+        listId="meeting-llm-remote-models"
+        placeholder="例如：gpt-6-astra"
+        maxlength={128}
+        {probe}
+      />
     </div>
 
     <div>
