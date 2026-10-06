@@ -26,7 +26,15 @@
     session.signOut();
     router.go('/login', { replace: true });
   }
+
+  // 文件拖到上传区以外松手时，浏览器会在当前标签直接打开它，已选的文件和正在处理的内容就丢了；
+  // 没被拖放区接住的一律拦下（翻译、PDF 处理、会议记录等登录后的页面都在这个外壳里）
+  function blockStrayDrop(e: DragEvent) {
+    if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
+  }
 </script>
+
+<svelte:window ondragover={blockStrayDrop} ondrop={blockStrayDrop} />
 
 <div class="flex min-h-dvh flex-col">
   <header class="sticky top-0 z-30 border-b border-line bg-page/80 backdrop-blur-md">
