@@ -5,7 +5,7 @@
   import StatTile from '../../components/admin/StatTile.svelte';
   import ProgressBar from '../../components/ProgressBar.svelte';
   import { api } from '../../lib/api';
-  import { bytes, compact, duration, elapsedSince, relativeTime, stageLabel } from '../../lib/format';
+  import { bytes, compact, duration, elapsedSince, jobStageLabel, relativeTime } from '../../lib/format';
   import {
     CircleAlert,
     Clock,
@@ -112,7 +112,7 @@
                 </div>
                 <div class="mt-1.5"><ProgressBar value={r.progress} active label="{r.filename} 进度" /></div>
                 <p class="mt-1 flex justify-between text-[12px] text-muted">
-                  <span>{stageLabel(r.stage)} · {r.billed_pages} 页</span>
+                  <span>{jobStageLabel(r.stage)} · {r.billed_pages} 页</span>
                   <span class="tabular">{Math.floor(r.progress)}% · {duration(elapsedSince(r.started_at, now))}</span>
                 </p>
               </li>

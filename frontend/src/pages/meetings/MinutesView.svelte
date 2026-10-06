@@ -4,7 +4,7 @@
   import { copyText, dateTime, relativeTime } from '../../lib/format';
   import { CircleAlert, Copy, LoaderCircle, RefreshCw, Sparkles, TriangleAlert } from '../../lib/icons';
   import { meetingApi } from '../../lib/meeting/api';
-  import { fillSpeakers, isActive, stageLabel } from '../../lib/meeting/format';
+  import { fillSpeakers, isActive, meetingStageLabel } from '../../lib/meeting/format';
   import { NotebookPen } from '../../lib/meeting/icons';
   import type { MeetingDetail, MeetingOp } from '../../lib/meeting/types';
   import { meetings } from '../../lib/meetings.svelte';
@@ -114,7 +114,7 @@
         <ProgressBar value={stepProgress} active label="纪要生成进度" />
       </div>
       <p class="mt-2 text-[12.5px] text-muted">
-        {live.stage ? stageLabel(live.stage) : '准备中'}，长会议可能需要几分钟，可以先去看逐字稿或离开页面。
+        {live.stage ? meetingStageLabel(live.stage) : '准备中'}，长会议可能需要几分钟，可以先去看逐字稿或离开页面。
       </p>
     </div>
   {/if}

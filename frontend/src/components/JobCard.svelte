@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api, fileUrl } from '../lib/api';
   import { confirm } from '../lib/confirm.svelte';
-  import { compact, dateTime, duration, elapsedSince, expiryLabel, relativeTime, stageLabel } from '../lib/format';
+  import { compact, dateTime, duration, elapsedSince, expiryLabel, jobStageLabel, relativeTime } from '../lib/format';
   import {
     Ban,
     BookOpenText,
@@ -133,7 +133,7 @@
         <div class="mt-3.5">
           <ProgressBar value={live.progress} active label="翻译进度" />
           <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px]">
-            <span class="font-medium text-ink">{stageLabel(live.stage)}</span>
+            <span class="font-medium text-ink">{jobStageLabel(live.stage)}</span>
             {#if live.total && live.total > 1}
               <span class="tabular text-muted">{live.current ?? 0}/{live.total}</span>
             {/if}

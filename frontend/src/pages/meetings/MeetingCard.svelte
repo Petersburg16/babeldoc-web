@@ -3,7 +3,7 @@
   import Menu from '../../components/Menu.svelte';
   import ProgressBar from '../../components/ProgressBar.svelte';
   import { confirm, type ConfirmOptions } from '../../lib/confirm.svelte';
-  import { bytes, compact, dateTime, duration, elapsedSince, expiryLabel, relativeTime } from '../../lib/format';
+  import { bytes, compact, dateTime, duration, elapsedSince, relativeTime } from '../../lib/format';
   import {
     AudioLines,
     Ban,
@@ -15,7 +15,15 @@
     TriangleAlert,
   } from '../../lib/icons';
   import { meetingApi } from '../../lib/meeting/api';
-  import { errorKindLabel, fillSpeakers, isActive, spoken, stageLabel, statusLabel } from '../../lib/meeting/format';
+  import {
+    audioExpiryText,
+    errorKindLabel,
+    fillSpeakers,
+    isActive,
+    meetingStageLabel,
+    spoken,
+    statusLabel,
+  } from '../../lib/meeting/format';
   import { ArrowRight } from '../../lib/meeting/icons';
   import type { Meeting, MeetingStatus } from '../../lib/meeting/types';
   import { meetings } from '../../lib/meetings.svelte';
@@ -65,15 +73,11 @@
   const templateName = $derived(meetings.options?.templates.find((t) => t.id === m.template)?.name ?? '');
   const speakerCount = $derived(Object.values(m.speakers ?? {}).filter((s) => !s.merged_into).length);
   const partsDone = $derived(m.parts.filter((p) => p.state === 'done').length);
-  const stageText = $derived(live.stage ? stageLabel(live.stage) : statusLabel(m.status));
+  const stageText = $derived(live.stage ? meetingStageLabel(live.stage) : statusLabel(m.status));
   const errorKind = $derived(errorKindLabel(m.error_kind));
   const expiresIn = $derived(m.audio_expires_at ? new Date(m.audio_expires_at).getTime() - now : null);
   const expiryTitle = $derived(m.audio_expires_at ? `将于 ${dateTime(m.audio_expires_at)} 自动删除，文字记录会保留` : '');
-  const expiryText = $derived.by(() => {
-    if (expiresIn === null) return '';
-    const label = expiryLabel(expiresIn);
-    return /^\d/.test(label) ? `录音 ${label}` : `录音${label}`;
-  });
+  const expiryText = $derived(expiresIn === null ? '' : audioExpiryText(expiresIn));
   const minutesNote = $derived.by(() => {
     if (m.op === 'minutes' || m.minutes_state === 'generating') return null;
     if (m.minutes_state === 'ready') {
@@ -210,7 +214,7 @@
         <p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-muted">
           {#if m.op}
             <span class="inline-flex items-center gap-1 font-medium text-accent-ink">
-              <LoaderCircle class="size-3.5 animate-spin" />正在{stageLabel(m.op)}
+              <LoaderCircle class="size-3.5 animate-spin" />正在{meetingStageLabel(m.op)}
             </span>
           {/if}
           {#if speakerCount}<span>{speakerCount} 位说话人</span>{/if}

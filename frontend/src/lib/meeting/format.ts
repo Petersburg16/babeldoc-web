@@ -1,3 +1,4 @@
+import { expiryLabel } from '../format';
 import type { Meeting, MeetingStatus, SpeakerInfo } from './types';
 
 /** 毫秒 → 1:02:03 或 02:03 */
@@ -24,6 +25,12 @@ export function spoken(ms: number) {
   const m = minutes % 60;
   if (!h) return `${m} 分钟`;
   return m ? `${h} 小时 ${m} 分` : `${h} 小时`;
+}
+
+/** 录音保留期：录音 3 天后自动删除、录音即将自动删除（卡片和详情页共用） */
+export function audioExpiryText(ms: number) {
+  const label = expiryLabel(ms);
+  return /^\d/.test(label) ? `录音 ${label}` : `录音${label}`;
 }
 
 /** 解析 [1:02:03]、[02:03] 这样的时间戳，返回毫秒；不合法返回 null */
@@ -90,7 +97,7 @@ const STAGES: Record<string, string> = {
   minutes: '生成纪要',
 };
 
-export function stageLabel(stage: string) {
+export function meetingStageLabel(stage: string) {
   return STAGES[stage] ?? stage;
 }
 

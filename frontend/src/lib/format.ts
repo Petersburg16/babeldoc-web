@@ -17,7 +17,7 @@ const STAGES: Record<string, string> = {
   'Add Debug Information': '写入调试信息',
 };
 
-export function stageLabel(stage: string | null | undefined) {
+export function jobStageLabel(stage: string | null | undefined) {
   if (!stage) return '准备中';
   return STAGES[stage] ?? stage;
 }

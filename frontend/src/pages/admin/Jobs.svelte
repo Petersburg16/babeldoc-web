@@ -5,7 +5,7 @@
   import StatusBadge from '../../components/StatusBadge.svelte';
   import { api } from '../../lib/api';
   import { confirm } from '../../lib/confirm.svelte';
-  import { bytes, compact, dateTime, duration, stageLabel } from '../../lib/format';
+  import { bytes, compact, dateTime, duration, jobStageLabel } from '../../lib/format';
   import { Ban, LoaderCircle, RefreshCw, RotateCcw, ScrollText, Search, Trash2 } from '../../lib/icons';
   import { session } from '../../lib/session.svelte';
   import { toast } from '../../lib/toast.svelte';
@@ -150,7 +150,7 @@
               {#if job.status === 'failed' && job.error}
                 <p class="mt-0.5 line-clamp-2 text-[12px] text-bad-ink" title={job.error}>{job.error}</p>
               {:else if job.status === 'running'}
-                <p class="mt-0.5 text-[12px] text-accent-ink">{stageLabel(job.stage)} · {Math.floor(job.progress)}%</p>
+                <p class="mt-0.5 text-[12px] text-accent-ink">{jobStageLabel(job.stage)} · {Math.floor(job.progress)}%</p>
               {/if}
             </td>
             <td class="whitespace-nowrap">@{job.username}</td>

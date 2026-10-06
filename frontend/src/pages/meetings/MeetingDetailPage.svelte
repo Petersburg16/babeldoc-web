@@ -7,16 +7,17 @@
   import Segmented from '../../components/Segmented.svelte';
   import { ApiError } from '../../lib/api';
   import { confirm } from '../../lib/confirm.svelte';
-  import { dateTime, expiryLabel } from '../../lib/format';
+  import { dateTime, duration, elapsedSince } from '../../lib/format';
   import { Ban, CircleAlert, Clock, Compass, LoaderCircle, Pencil, RotateCcw, Trash2, TriangleAlert } from '../../lib/icons';
   import { audioUrl, meetingApi } from '../../lib/meeting/api';
   import {
+    audioExpiryText,
     errorKindLabel,
     fillSpeakers,
     isActive,
+    meetingStageLabel,
     resolveSpeaker,
     spoken,
-    stageLabel,
     statusLabel,
   } from '../../lib/meeting/format';
   import type { Segment } from '../../lib/meeting/types';
@@ -71,15 +72,12 @@
     const map = meeting.speakers ?? {};
     return Object.keys(map).filter((sid) => resolveSpeaker(map, sid) === sid).length;
   });
-  const elapsedMs = $derived(meeting?.started_at ? now - new Date(meeting.started_at).getTime() : null);
+  // 与会议卡片一致：按秒计、用 duration 显示
+  const elapsed = $derived(elapsedSince(meeting?.started_at, now));
   const audioLeft = $derived(
     meeting?.audio_available && meeting.audio_expires_at ? new Date(meeting.audio_expires_at).getTime() - now : null,
   );
-  const audioLabel = $derived.by(() => {
-    if (audioLeft === null) return '';
-    const label = expiryLabel(audioLeft);
-    return /^\d/.test(label) ? `录音 ${label}` : `录音${label}`;
-  });
+  const audioLabel = $derived(audioLeft === null ? '' : audioExpiryText(audioLeft));
   const doneParts =$derived(meeting ? meeting.parts.filter((p) => p.state === 'done').length : 0);
 
   // 不用 document.title 取站名：换会议时新旧页面的创建和销毁顺序不保证，可能取到上一场会议的标题
@@ -396,12 +394,12 @@
         {:else if live}
           <ProgressBar value={live.progress} active label="处理进度" />
           <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px]">
-            <span class="font-medium text-ink">{live.stage ? stageLabel(live.stage) : statusLabel(meeting.status)}</span>
+            <span class="font-medium text-ink">{live.stage ? meetingStageLabel(live.stage) : statusLabel(meeting.status)}</span>
             {#if meeting.status === 'transcribing' && meeting.parts.length > 1}
               <span class="text-muted">已完成 {doneParts}/{meeting.parts.length} 段</span>
             {/if}
             <span class="ml-auto flex items-center gap-3 text-muted">
-              {#if elapsedMs !== null && elapsedMs > 0}<span>已用 {spoken(elapsedMs)}</span>{/if}
+              {#if elapsed !== null && elapsed > 0}<span>已用 {duration(elapsed)}</span>{/if}
               <span class="tabular font-semibold text-ink">{Math.floor(live.progress)}%</span>
             </span>
           </div>
