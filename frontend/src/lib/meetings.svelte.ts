@@ -1,19 +1,14 @@
 import { events } from './events.svelte';
 import { meetingApi } from './meeting/api';
 import type { Meeting, MeetingDetail, MeetingOptions } from './meeting/types';
-
-const PAGE = 20;
+import { PagedList } from './paged.svelte';
 
 export interface MeetingLive {
   progress: number;
   stage: string;
 }
 
-class MeetingsStore {
-  items = $state<Meeting[]>([]);
-  total = $state(0);
-  loading = $state(false);
-  loaded = $state(false);
+class MeetingsStore extends PagedList<Meeting> {
   live = $state<Record<string, MeetingLive>>({});
   /** 详情页正在看的会议（带纪要正文）；事件到来时就地更新 */
   detail = $state<MeetingDetail | null>(null);
@@ -21,6 +16,7 @@ class MeetingsStore {
   private wantedDetail: string | null = null;
 
   constructor() {
+    super();
     events.on('meeting', (data) => this.upsert(data.meeting));
     events.on('meeting_removed', (data) => this.remove(data.id));
     events.on('meeting_progress', (data) => {
@@ -33,25 +29,13 @@ class MeetingsStore {
     });
   }
 
-  get hasMore() {
-    return this.items.length < this.total;
-  }
-
   async loadOptions() {
     this.options = await meetingApi.options();
     return this.options;
   }
 
-  async load(more = false) {
-    this.loading = true;
-    try {
-      const page = await meetingApi.list(PAGE, more ? this.items.length : 0);
-      this.items = more ? [...this.items, ...page.items.filter((m) => !this.items.some((x) => x.id === m.id))] : page.items;
-      this.total = page.total;
-      this.loaded = true;
-    } finally {
-      this.loading = false;
-    }
+  load(more = false) {
+    return this.loadPage((limit, offset) => meetingApi.list(limit, offset), more);
   }
 
   async openDetail(id: string) {
@@ -74,10 +58,7 @@ class MeetingsStore {
     const known = index >= 0 ? this.items[index] : this.detail?.id === m.id ? this.detail : null;
     if (known && isStale(m, known)) return;
     if (index >= 0) this.items[index] = { ...this.items[index], ...m };
-    else {
-      this.items = [m, ...this.items];
-      this.total += 1;
-    }
+    else this.insertIfNewer(m);
     if (['done', 'failed', 'canceled'].includes(m.status) && !m.op) {
       const { [m.id]: _, ...rest } = this.live;
       this.live = rest;
@@ -101,9 +82,7 @@ class MeetingsStore {
   }
 
   remove(id: string) {
-    const before = this.items.length;
-    this.items = this.items.filter((m) => m.id !== id);
-    if (this.items.length < before) this.total = Math.max(0, this.total - 1);
+    super.remove(id);
     if (this.detail?.id === id) this.detail = null;
   }
 
@@ -112,9 +91,7 @@ class MeetingsStore {
   }
 
   reset() {
-    this.items = [];
-    this.total = 0;
-    this.loaded = false;
+    super.reset();
     this.live = {};
     this.detail = null;
     this.options = null;
