@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from ..models import AsrProvider, GlossaryTerm, Meeting, MeetingLlmModel, MeetingMessage, MeetingSegment
-from ..schemas import BaseUrl
+from ..schemas import ApiKey, BaseUrl, Description, ModelName, Name, Qps
 from ..security import SecretBox, mask_secret
 from .asr import adapter_class, load_secrets
 from .llm_config import EFFORT_ORDER, PresetSteps, Step, builtin_efforts, normalize_effort, normalize_levels
@@ -302,8 +302,8 @@ class ProviderAdminOut(BaseModel):
 
 class ProviderIn(BaseModel):
     kind: str = Field(min_length=1, max_length=32)
-    name: str = Field(min_length=1, max_length=64)
-    description: str = Field(default="", max_length=255)
+    name: Name
+    description: Description = ""
     config: dict[str, str] = Field(default_factory=dict)
     secrets: dict[str, str] = Field(default_factory=dict)
     enabled: bool = True
@@ -312,8 +312,8 @@ class ProviderIn(BaseModel):
 
 
 class ProviderPatch(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=64)
-    description: str | None = Field(default=None, max_length=255)
+    name: Name | None = None
+    description: Description | None = None
     config: dict[str, str] | None = None
     secrets: dict[str, str] | None = None  # 只更新填了的字段；留空的保持不变
     clear_secrets: list[str] = Field(default_factory=list)
@@ -416,15 +416,15 @@ def _levels(v: list[str] | None) -> list[str] | None:
 
 
 class LlmModelIn(BaseModel):
-    name: str = Field(min_length=1, max_length=64)
-    description: str = Field(default="", max_length=255)
+    name: Name
+    description: Description = ""
     base_url: BaseUrl = ""
-    api_key: str = Field(default="", max_length=512)
+    api_key: ApiKey = ""
     # 从翻译模型复制接口地址和 Key（Key 在服务器端复制，不经过浏览器）；自己填了的以填的为准
     copy_from_model_id: int | None = None
-    model: str = Field(min_length=1, max_length=128)
+    model: ModelName
     effort_levels: list[str] | None = None  # None：按模型名用内置档位表
-    qps: int = Field(default=3, ge=1, le=100)
+    qps: Qps = 3
     json_mode: bool = False
     context_chars: int | None = Field(default=None, ge=10_000, le=2_000_000)
     enabled: bool = True
@@ -439,15 +439,15 @@ class LlmModelIn(BaseModel):
 
 
 class LlmModelPatch(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=64)
-    description: str | None = Field(default=None, max_length=255)
+    name: Name | None = None
+    description: Description | None = None
     base_url: BaseUrl | None = None
-    api_key: str | None = Field(default=None, max_length=512)
+    api_key: ApiKey | None = None
     clear_api_key: bool = False
     copy_from_model_id: int | None = None
-    model: str | None = Field(default=None, min_length=1, max_length=128)
+    model: ModelName | None = None
     effort_levels: list[str] | None = None
-    qps: int | None = Field(default=None, ge=1, le=100)
+    qps: Qps | None = None
     json_mode: bool | None = None
     context_chars: int | None = Field(default=None, ge=10_000, le=2_000_000)
     enabled: bool | None = None
@@ -463,7 +463,7 @@ class LlmProbeIn(BaseModel):
     """拉取模型列表、检测思考档位：用表单里填的地址和 Key；Key 留空时用已保存的会议模型或翻译模型的 Key。"""
 
     base_url: BaseUrl = ""
-    api_key: str = Field(default="", max_length=512)
+    api_key: ApiKey = ""
     model: str = Field(default="", max_length=128)
     model_id: int | None = None
     copy_from_model_id: int | None = None
@@ -510,8 +510,8 @@ class PresetAdminOut(BaseModel):
 
 
 class PresetIn(BaseModel):
-    name: str = Field(min_length=1, max_length=64)
-    description: str = Field(default="", max_length=255)
+    name: Name
+    description: Description = ""
     steps: PresetSteps
     is_default: bool = False
     enabled: bool = True
@@ -519,8 +519,8 @@ class PresetIn(BaseModel):
 
 
 class PresetPatch(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=64)
-    description: str | None = Field(default=None, max_length=255)
+    name: Name | None = None
+    description: Description | None = None
     steps: PresetSteps | None = None
     is_default: bool | None = None
     enabled: bool | None = None

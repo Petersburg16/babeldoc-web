@@ -29,6 +29,12 @@ def _check_base_url(v: str) -> str:
 
 Username = Annotated[str, Field(min_length=3, max_length=40), AfterValidator(normalize_username)]
 BaseUrl = Annotated[str, Field(max_length=255), AfterValidator(_check_base_url)]
+# 翻译模型、会议模型、识别服务、整理方案的表单共用的字段（与库里的列宽一致）
+Name = Annotated[str, Field(min_length=1, max_length=64)]
+Description = Annotated[str, Field(max_length=255)]
+ApiKey = Annotated[str, Field(max_length=512)]
+ModelName = Annotated[str, Field(min_length=1, max_length=128)]
+Qps = Annotated[int, Field(ge=1, le=100)]
 
 
 class UserOut(BaseModel):
@@ -223,13 +229,13 @@ class ModelAdminOut(BaseModel):
 
 
 class ModelIn(BaseModel):
-    name: str = Field(min_length=1, max_length=64)
-    description: str = Field(default="", max_length=255)
+    name: Name
+    description: Description = ""
     base_url: BaseUrl = ""
-    api_key: str = Field(default="", max_length=512)
-    model: str = Field(min_length=1, max_length=128)
+    api_key: ApiKey = ""
+    model: ModelName
     term_model: str | None = Field(default=None, max_length=128)
-    qps: int = Field(default=4, ge=1, le=100)
+    qps: Qps = 4
     pool_max_workers: int | None = Field(default=None, ge=1, le=128)
     send_temperature: bool = True
     json_mode: bool = False
@@ -239,14 +245,14 @@ class ModelIn(BaseModel):
 
 
 class ModelPatch(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=64)
-    description: str | None = Field(default=None, max_length=255)
+    name: Name | None = None
+    description: Description | None = None
     base_url: BaseUrl | None = None
-    api_key: str | None = Field(default=None, max_length=512)
+    api_key: ApiKey | None = None
     clear_api_key: bool = False
-    model: str | None = Field(default=None, min_length=1, max_length=128)
+    model: ModelName | None = None
     term_model: str | None = Field(default=None, max_length=128)
-    qps: int | None = Field(default=None, ge=1, le=100)
+    qps: Qps | None = None
     pool_max_workers: int | None = Field(default=None, ge=1, le=128)
     send_temperature: bool | None = None
     json_mode: bool | None = None
@@ -257,7 +263,7 @@ class ModelPatch(BaseModel):
 
 class ModelProbeIn(BaseModel):
     base_url: BaseUrl = ""
-    api_key: str = Field(default="", max_length=512)
+    api_key: ApiKey = ""
     model_id: int | None = None
 
 
