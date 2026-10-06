@@ -24,8 +24,8 @@ interface LockEngine {
 
 const LOCK = lockData.engines as unknown as Record<string, LockEngine>;
 
-/** core / render 的代码随前端一起打包；其余引擎的文件由本站 /pdf-assets/ 提供 */
-export type EngineId = 'core' | 'render' | (keyof typeof lockData.engines & string);
+/** 锁文件里的引擎名，文件都由本站 /pdf-assets/ 提供；随前端打包的库（pdf-lib、PDF.js 的代码等）不算引擎 */
+export type EngineId = keyof typeof lockData.engines & string;
 
 export interface Progress {
   loaded: number;
@@ -111,7 +111,7 @@ class Engines {
     return this.refreshing;
   }
 
-  /** 这些引擎里还需要下载的字节数（按预压缩后的传输大小估算；随前端打包的和按需零散加载的不计） */
+  /** 这些引擎里还需要下载的字节数（按预压缩后的传输大小估算；按需零散加载的不计） */
   pendingBytes(ids: EngineId[]) {
     let total = 0;
     for (const id of new Set(ids)) {

@@ -31,7 +31,7 @@
 
 <ToolFrame
   resetKey={files}
-  engines={['core']}
+  engines={[]}
   runLabel={files.length > 1 ? `合成 ${files.length} 张图片` : '转为 PDF'}
   canRun={files.length > 0}
   blocked="请先选择图片"

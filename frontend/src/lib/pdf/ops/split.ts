@@ -51,8 +51,9 @@ export async function loadPdf(file: File) {
 }
 
 /**
- * qpdf-wasm 在同一个模块里累计运行两三百条命令后会崩溃（实测 228～323 次，与文件大小无关），
- * worker 会在下一条命令时重建模块，所以崩溃（退出码 -1）时重试一次，免得把好文件报成“已损坏”。
+ * qpdf-wasm 在同一个模块里累计运行两三百条命令后会崩溃（实测 228～323 次，与文件大小无关）。
+ * worker 已经每 100 条命令换一个实例、崩溃后自己重跑一次（qpdf.worker.ts），这一层只兜底 worker 整体崩溃
+ * 或重跑仍失败（退出码 -1）的情况，再试一次，免得把好文件报成“已损坏”。
  */
 async function retryOnCrash<T>(fn: () => Promise<T>): Promise<T> {
   try {
